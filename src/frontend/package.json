@@ -20,13 +20,13 @@
     "vite-plugin-environment": "^1.1.3",
     "vitest": "^0.32.2"
   },
-  "name": "motoko-event-client-frontend",
+  "name": "frontend",
   "private": true,
   "scripts": {
     "build": "tsc && vite build",
     "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\"",
     "prebuild": "dfx generate",
-    "setup": "npm i && dfx canister create motoko-event-client-backend && dfx generate motoko-event-client-backend && dfx deploy",
+    "setup": "npm i && dfx canister create client && dfx generate client && dfx deploy",
     "start": "vite --port 3000",
     "test": "vitest run"
   },

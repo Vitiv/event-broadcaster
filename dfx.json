@@ -11,28 +11,28 @@
       "type": "custom",
       "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz"
     },
-    "motoko-event-client-backend": {
+    "client": {
       "declarations": {
         "node_compatibility": true
       },
-      "main": "src/motoko-event-client-backend/main.mo",
+      "main": "src/client/main.mo",
       "type": "motoko"
     },
-    "motoko-event-client-frontend": {
+    "frontend": {
       "dependencies": [
-        "motoko-event-client-backend"
+        "client"
       ],
       "source": [
-        "src/motoko-event-client-frontend/dist"
+        "src/frontend/dist"
       ],
       "type": "assets",
-      "workspace": "motoko-event-client-frontend"
+      "workspace": "frontend"
     }
   },
   "defaults": {
     "build": {
       "args": "",
-      "packtool": ""
+      "packtool": "mops sources"
     }
   },
   "output_env_file": ".env",
