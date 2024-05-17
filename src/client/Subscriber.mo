@@ -1,5 +1,3 @@
-// Subscriber.mo
-
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
 import t "mo:candy/types";
@@ -15,10 +13,15 @@ module {
         filter : Text;
     };
 
+    public type Filter = {
+        topic : Text;
+        condition : ?Text; // candyPath
+    };
+
     public type SubscriptionRegistration = {
         namespace : Text;
         config : [(Text, ICRC16)];
-        filter : ?Text;
+        filter : ?Filter;
         skip : ?Nat;
         stopped : Bool;
     };
@@ -45,20 +48,20 @@ module {
         #Map : [(Text, Value)];
     };
 
-    public shared ({ caller }) func register_subscription(broadcaster : Text, subscription : [SubscriptionRegistration]) : async [(Text, Bool)] {
+    public func register_subscription(broadcaster : Text, caller : Principal, subscription : [SubscriptionRegistration]) : async [(Principal, Bool)] {
         Debug.print("Subscriber: Register subscription for namespace: " # subscription[0].namespace);
-        [(Principal.toText(caller), true)];
+        [(caller, true)];
     };
 
-    public func icrc72_handle_notification(message : Message) : async () {
-        Debug.print("Subscriber: icrc72_event_listener: done, message:  " # Nat.toText(message.id));
+    public func icrc72_handle_notification(message : [Message]) : async () {
+        Debug.print("Subscriber: icrc72_event_listener: done, message:  " # Nat.toText(message[0].id));
     };
 
-    public func icrc72_handle_notification_trusted(message : Message) : async ({
+    public func icrc72_handle_notification_trusted(message : [Message]) : async ({
         #Ok : Value;
         #Err : Text;
     }) {
-        Debug.print("Subscriber: icrc72_event_listener_trusted: done, message:  " # Nat.toText(message.id));
+        Debug.print("Subscriber: icrc72_event_listener_trusted: done, message:  " # Nat.toText(message[0].id));
         #Ok(#Text("Subscriber: OK"));
     };
 
@@ -67,12 +70,17 @@ module {
         true;
     };
 
-    public func subscribe(caller : Principal, broadcaster : Text, namespace : Text, filter : ?Text, skip : ?Nat) : async Nat {
+    public func subscribe(caller : Principal, broadcaster : Text, namespace : Text, filter : ?Filter, skip : ?Nat) : async Nat {
         Debug.print("Subscriber: Subscribe to namespace: " # namespace);
         1;
     };
 
     public func get_subscription_stats(broadcaster : Text, namespace : Text) : async [(Text, ICRC16)] {
         [("Subscriber: Active Subscriptions", #Nat(5))];
+    };
+
+    public func test_subscription() : async Bool {
+        Debug.print("Subscriber: Test subscription");
+        true;
     };
 };

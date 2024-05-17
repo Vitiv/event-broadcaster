@@ -39,22 +39,29 @@ module {
         #Map : [(Text, Value)];
     };
 
-    public shared ({ caller }) func register_publication(registration : [PublicationRegistration]) : async [(Text, Bool)] {
+    public type PublishError = {
+        #NotFound : Text;
+        #AlreadyExists : Text;
+        #Invalid : Text;
+        #Other : Text;
+    };
+
+    public func register_publication(caller : Principal, registration : [PublicationRegistration]) : async [(Principal, Bool)] {
         Debug.print("Publisher: Register publication for namespace: " # registration[0].namespace);
-        [(Principal.toText(caller), true)];
+        [(caller, true)];
     };
 
     public func icrc72_publish(event : Event) : async ({
-        #Ok : Value;
-        #Err : Text;
+        #Ok : ICRC16;
+        #Err : PublishError;
     }) {
         Debug.print("Publisher: icrc72_publish: done, event:  " # Nat.toText(event.id));
-        #Ok(#Text("Publisher: OK"));
+        #Ok(event.data);
     };
 
     public func icrc72_publish_relay(event : EventRelay) : async ({
         #Ok : Value;
-        #Err : Text;
+        #Err : PublishError;
     }) {
         Debug.print("Publisher: icrc72_publish_relay: done, event:  " # Nat.toText(event.id));
         #Ok(#Text("Publisher: OK"));
@@ -62,7 +69,7 @@ module {
 
     public func publishEvent(broadcaster : Text, event : Event) : async ({
         #Ok : Value;
-        #Err : Text;
+        #Err : PublishError;
     }) {
         Debug.print("Publisher: publishEvent: done, event:  " # Nat.toText(event.id) # " to " # broadcaster);
         #Ok(#Text("OK"));

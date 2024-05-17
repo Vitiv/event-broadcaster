@@ -15,7 +15,7 @@
       "declarations": {
         "node_compatibility": true
       },
-      "main": "src/client/main.mo",
+      "main": "src/client/ICRC72Broadcaster.mo",
       "type": "motoko"
     },
     "frontend": {
