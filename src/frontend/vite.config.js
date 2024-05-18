@@ -4,6 +4,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import environment from 'vite-plugin-environment';
 import dotenv from 'dotenv';
+import path from 'path';
 
 dotenv.config({ path: '../../.env' });
 
@@ -19,6 +20,9 @@ export default defineConfig({
     },
   },
   server: {
+    fs: {
+      allow: ['.']
+    },
     proxy: {
       "/api": {
         target: "http://127.0.0.1:4943",
@@ -43,6 +47,11 @@ export default defineConfig({
           new URL("../declarations", import.meta.url)
         ),
       },
+      {
+        find: "$lib",
+        replacement: fileURLToPath(
+          new URL('../lib', import.meta.url)),
+      }
     ],
   },
 });

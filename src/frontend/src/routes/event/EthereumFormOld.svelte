@@ -34,14 +34,13 @@
 		selectedProvider.set(event.target.value);
 	}
 
-	let source = "";
 	let blockTagFrom = "";
 	let blockTagTo = "";
 	let fromBlock = "";
 	let toBlock = "";
 	let addresses = [""];
 	let topics = [""];
-	let responseSizeEstimate = null;
+	let config = { responseSizeEstimate: 1000 };
 	let estimatedCost = 0;
 	let maxResponseBytes = 1000;
 
@@ -65,17 +64,21 @@
 		handleInput();
 	}
 
-	let provider = selectedProvider;
-
 	async function callEthGetLogs() {
-		source = selectedNetwork;
+		let source;
+		let provider;
+		selectedNetwork.subscribe((value) => {
+			source = value;
+		});
+		selectedProvider.subscribe((value) => {
+			provider = value;
+		});
 
-		const config = responseSizeEstimate ? responseSizeEstimate : 0;
 		const getLogArgs = {
-			blockTagFrom: blockTagFrom || null,
-			blockTagTo: blockTagTo || null,
-			fromBlock: fromBlock || null,
-			toBlock: toBlock || null,
+			blockTagFrom: blockTagFrom || "",
+			blockTagTo: blockTagTo || "",
+			fromBlock: fromBlock || 1,
+			toBlock: toBlock || 1,
 			addresses,
 			topics: topics.length > 0 ? topics : [],
 		};
@@ -86,18 +89,20 @@
 			config: JSON.stringify(config),
 			getLogArgs: JSON.stringify(getLogArgs),
 		};
-		console.log(data);
+		console.log("Request data ", data);
+		console.log("Added cycles ", estimatedCost);
 
-		response = await backend.getEthLogs(
+		const response = await backend.getEthLogs(
 			source,
 			provider,
-			config,
+			config.responseSizeEstimate,
 			getLogArgs.addresses,
 			getLogArgs.blockTagFrom,
 			getLogArgs.fromBlock,
 			getLogArgs.blockTagTo,
 			getLogArgs.toBlock,
 			getLogArgs.topics,
+			estimatedCost,
 		);
 		const parsedResult = parseMultiGetLogsResult(response);
 		console.log(parsedResult);
@@ -112,6 +117,15 @@
 	}
 
 	export function calculateCost() {
+		let provider;
+		selectedProvider.subscribe((value) => {
+			provider = value;
+		});
+		let network;
+		selectedNetwork.subscribe((value) => {
+			network = value;
+		});
+
 		const addressSize = addresses.reduce(
 			(acc, address) => acc + getTextSize(address),
 			0,
@@ -123,11 +137,29 @@
 		const blockTagSize = 8;
 		const payloadSizeBytes = addressSize + topicSize + 2 * blockTagSize;
 		const service = {
-			api: selectedNetwork,
+			api: network,
 			provider: provider,
 		};
 
-		estimatedCost = getRpcCost(service, payloadSizeBytes, maxResponseBytes);
+		const jsonRequest = JSON.stringify({
+			source: network,
+			provider: provider,
+			config: config,
+			getLogArgs: {
+				blockTagFrom: blockTagFrom || null,
+				blockTagTo: blockTagTo || null,
+				fromBlock: fromBlock || null,
+				toBlock: toBlock || null,
+				addresses,
+				topics: topics.length > 0 ? topics : [],
+			},
+		});
+		console.log(jsonRequest);
+		estimatedCost = getRpcCost(
+			service,
+			jsonRequest.length,
+			maxResponseBytes,
+		);
 		console.log(`Estimated cost: ${estimatedCost}`);
 	}
 
@@ -138,6 +170,7 @@
 	}
 
 	function addCycles() {
+		console.log("Adding cycles to request", estimatedCost);
 		dispatch("addCycles", { cycles: estimatedCost });
 	}
 </script>
@@ -165,33 +198,6 @@
 		</select>
 	{/if}
 
-	<p>Selected Network: {$selectedNetwork}</p>
-	<p>Selected Provider: {$selectedProvider}</p>
-	<!-- <label for="eth-sepolia-service">Eth Sepolia Service</label>
-	<select
-		id="eth-sepolia-service"
-		on:change={handleInput}
-		bind:value={providerSepolia}
-	>
-		<option value="">None</option>
-		<option value="Alchemy">Alchemy</option>
-		<option value="BlockPi">BlockPi</option>
-		<option value="PublicNode">PublicNode</option>
-		<option value="Ankr">Ankr</option>
-	</select>
-	<label for="eth-mainnet-service">Eth Mainnet Service</label>
-	<select
-		id="eth-mainnet-service"
-		on:change={handleInput}
-		bind:value={providerMainnet}
-	>
-		<option value="">None</option>
-		<option value="Alchemy">Alchemy</option>
-		<option value="BlockPi">BlockPi</option>
-		<option value="Cloudflare">Cloudflare</option>
-		<option value="PublicNode">PublicNode</option>
-		<option value="Ankr">Ankr</option>
-	</select> -->
 	<div>
 		<label for="block-tag-from">Block Tag From</label>
 		<select
@@ -222,7 +228,11 @@
 	{/if}
 	<div>
 		<label for="block-tag-to">Block Tag To</label>
-		<select id="block-tag-to" bind:value={blockTagTo}>
+		<select
+			id="block-tag-to"
+			bind:value={blockTagTo}
+			on:change={handleInput}
+		>
 			<option value="">None</option>
 			<option value="Earliest">Earliest</option>
 			<option value="Safe">Safe</option>

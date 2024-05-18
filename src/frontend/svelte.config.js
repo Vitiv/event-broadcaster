@@ -1,5 +1,5 @@
 import adapter from '@sveltejs/adapter-static';
-
+import path from 'path';
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   kit: {
@@ -13,6 +13,7 @@ const config = {
       precompress: false,
       strict: true,
     }),
+
   },
 };
 

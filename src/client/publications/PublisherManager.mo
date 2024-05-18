@@ -4,6 +4,7 @@ import Option "mo:base/Option";
 import Buffer "mo:base/Buffer";
 import Array "mo:base/Array";
 import Debug "mo:base/Debug";
+import Iter "mo:base/Iter";
 import Types "../ICRC72Types";
 import Utils "../Utils";
 
@@ -57,6 +58,27 @@ module {
             Buffer.toArray(result);
         };
 
+        public func removePublication(publisher : Principal, namespace : Namespace) : async Bool {
+            var publication_list = publications.get(publisher);
+            switch (publication_list) {
+                case (null) {
+                    // If the publisher is not registered, return false
+                    false;
+                };
+                case (?list) {
+                    // Remove the publication from the publications map
+                    let updatedList = Array.filter<Types.PublicationInfo>(
+                        list,
+                        func(item) {
+                            item.namespace != namespace;
+                        },
+                    );
+                    publications.put(publisher, updatedList);
+                    true;
+                };
+            };
+        };
+
         public func unregisterPublisher(publisher : Principal) : async Bool {
             var publication_list = publications.get(publisher);
             switch (publication_list) {
@@ -74,6 +96,10 @@ module {
 
         public func getPublications(publisher : Principal) : async [Types.PublicationInfo] {
             Option.get(publications.get(publisher), []);
+        };
+
+        public func getPublishers() : async [Principal] {
+            Iter.toArray(publications.keys());
         };
 
         // Method to publish an event to all subscribers

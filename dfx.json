@@ -18,6 +18,10 @@
       "main": "src/client/ICRC72Broadcaster.mo",
       "type": "motoko"
     },
+    "evm_rpc": {
+      "type": "pull",
+      "id": "7hfb6-caaaa-aaaar-qadga-cai"
+    },
     "frontend": {
       "dependencies": [
         "client"
