@@ -73,7 +73,7 @@ module {
     };
     public type PublicationRegistration = {
         namespace : Text; // The namespace of the publication for categorization and filtering
-        confug : Map; // Additional configuration or metadata about the publication
+        config : Map; // Additional configuration or metadata about the publication
         // publishers : ?[Principal]; // Optional list of publishers authorized to publish under this namespace
         // subscribers : ?[Principal]; // Optional list of subscribers authorized to subscribe to this namespace
         // mode : Nat; // Publication mode (e.g., sequential, ranked, etc.)

@@ -189,7 +189,7 @@
 		padding: 0.5rem;
 		width: 100%;
 		max-width: 200px;
-		margin-top: 6rem;
+		margin-top: 4rem;
 		font-size: 1rem;
 	}
 
@@ -206,7 +206,7 @@
 	}
 
 	.success {
-		color: #1cd41c;
+		color: #22b49a;
 		background-color: #d4edda;
 		border-color: #c3e6cb;
 	}

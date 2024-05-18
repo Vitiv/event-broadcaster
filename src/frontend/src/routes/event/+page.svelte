@@ -3,7 +3,7 @@
     import back from "$lib/images/back_sub.svg";
     import NavMenu from "../Header.svelte";
     import EventForm from "./EventForm.svelte";
-    import EthereumForm from "./EthereumFormOld.svelte";
+    import EthereumForm from "./EthereumForm.svelte";
 
     const menuItems = [
         { name: "Home", href: "/" },

@@ -37,7 +37,7 @@ module {
                     let exists = Array.find<Types.SubscriptionInfo>(
                         list,
                         func(s) {
-                            s.namespace == subscription.namespace and s.subscriber == subscription.subscriber and s.active == subscription.active and s.filters == subscription.filters
+                            s.namespace == subscription.namespace and s.subscriber == subscription.subscriber
                         },
                     );
                     switch (exists) {

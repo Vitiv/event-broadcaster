@@ -16,6 +16,7 @@ import SubscriptionManager "./subscriptions/SubscriptionManager";
 import Types "ICRC72Types";
 import T "./EthTypes";
 import EthSender "./EventSender";
+import Utils "Utils";
 
 actor class ICRC72Broadcaster() = Self {
     type Event = {
@@ -113,8 +114,12 @@ actor class ICRC72Broadcaster() = Self {
         }];
     };
 
+    let default_publication_config = [("key", #Text("value"))];
+
     private let subManager = SubscriptionManager.SubscriptionManager();
     private let pubManager = Publisher.PublisherManager();
+
+    // Create event part
 
     public func createEvent({
         id : Nat;
@@ -150,8 +155,14 @@ actor class ICRC72Broadcaster() = Self {
             // send event to subscribers
             let publish_result = await pubManager.publishEventToSubscribers(_subscribers, event);
             result_buffer.add(filter, publish_result);
+            // ignore await increasePublicationMessagesSentStats(event.source, event.namespace, "messagesSent");
         };
         Buffer.toArray(result_buffer);
+    };
+
+    // key = "messagesSent"
+    func increasePublicationMessagesSentStats(publisher : Principal, namespace : Text, key : Text) : async Nat {
+        await pubManager.increasePublicationMessagesSentStats(publisher, namespace, key);
     };
 
     func parseNamespace(namespace : Text) : [Text] {
@@ -159,6 +170,8 @@ actor class ICRC72Broadcaster() = Self {
         let partsIter = Text.split(namespace, delimiter);
         Iter.toArray(partsIter);
     };
+
+    // Subscription part
 
     public func createSubscription({
         subscriber : Principal;
@@ -228,21 +241,55 @@ actor class ICRC72Broadcaster() = Self {
         Array.map<(Text, Text), Types.PublicationInfo>(
             stats,
             func(stat) : Types.PublicationInfo {
-                { namespace = stat.0; stats = [(stat.0, textToICRC16(stat.1))] };
+                {
+                    namespace = stat.0;
+                    stats = [(stat.0, textToICRC16(stat.1))];
+                };
             },
         );
     };
 
-    public func register_publication({
-        subscriber : Principal;
-        publications : [{
-            namespace : Text;
-            stats : [(Text, Text)];
+    // Subscription handling
+    /*   icrc72_handle_notification([Message]) : async ();
+        icrc72_handle_notification_trusted([Message]) : async {
+            #Ok : Value;
+            #Err : Text;
+        }; */
 
-        }];
-    }) : async [(Text, Bool)] {
-        let publicationInfo = textArrayToPublicationInfo(publications[0].stats);
-        await pubManager.register_publications(subscriber, publicationInfo);
+    public func icrc72_handle_notification(messages : [Types.Message]) : async () {
+        Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
+        Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
+    };
+
+    public func icrc72_handle_notification_trusted(messages : [Types.Message]) : async [Result.Result<Bool, Text>] {
+        Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
+        Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
+        Array.map<Types.Message, Result.Result<Bool, Text>>(
+            messages,
+            func(message) : Result.Result<Bool, Text> {
+                #ok true;
+            },
+        );
+    };
+
+    // Registers a publication for a subscriber in the specified namespace.
+    //
+    // Arguments:
+    // - publisher: The principal of the subscriber.
+    // - namespace: The namespace of the publication.
+    //
+    // Returns:
+    // boolean indicating success.
+    public func register_publication(
+        publisher : Principal,
+        namespace : Text,
+    ) : async Bool {
+        let publication : Types.PublicationRegistration = {
+            namespace = namespace;
+            config = default_publication_config;
+        };
+        let res = await pubManager.register_single_publication(publisher, publication);
+        res.1;
     };
 
     public func getPublications(publisher : Principal) : async [Types.PublicationInfo] {
@@ -300,7 +347,7 @@ actor class ICRC72Broadcaster() = Self {
             [
                 {
                     namespace = namespace;
-                    stats = [("key", #Text("value"))];
+                    config = default_publication_config;
                 },
             ],
         );
@@ -348,14 +395,14 @@ actor class ICRC72Broadcaster() = Self {
         assert (not wrongNamespaceResult[0].1);
 
         // School registers publications
-        let school_publications : [Types.PublicationInfo] = [
+        let school_publications : [Types.PublicationRegistration] = [
             {
                 namespace = "school.news";
-                stats = [("key", #Text("value"))];
+                config = default_publication_config;
             },
             {
                 namespace = "hackathon";
-                stats = [("key", #Text("value"))];
+                config = default_publication_config;
             },
         ];
 
@@ -402,9 +449,9 @@ actor class ICRC72Broadcaster() = Self {
             id = 2;
         };
         let handle_event1 = await Self.handleNewEvent(event1);
-        Debug.print("test_hackathon: handle_event1: " # Bool.toText(handle_event1[0].1));
+        Debug.print("test_hackathon: handle_event1: " # Bool.toText(handle_event1[0].1) # " " # handle_event1[0].0);
         let handle_event2 = await Self.handleNewEvent(event2);
-        Debug.print("test_hackathon: handle_event2: " # Bool.toText(handle_event2[0].1));
+        Debug.print("test_hackathon: handle_event2: " # Bool.toText(handle_event2[0].1) # " " # handle_event2[0].0);
 
         // School registers subscription to school.hackathon
         let school_sub_result2 = await Self.subscribe({
@@ -420,8 +467,8 @@ actor class ICRC72Broadcaster() = Self {
         assert school_sub_result2 == true;
 
         // Dev registers publication to dev.hackathon
-        let dev_reg_pub_result = await pubManager.register_publications(dev, [{ namespace = "hackathon"; stats = [("key", #Text("value"))] }]);
-        Debug.print("test_hackathon: dev_reg_pub_result: " # Bool.toText(dev_reg_pub_result[0].1));
+        let dev_reg_pub_result = await pubManager.register_publications(dev, [{ namespace = "hackathon"; config = default_publication_config }]);
+        Debug.print("test_hackathon: dev_reg_pub_result: " # Bool.toText(dev_reg_pub_result[0].1) # " namespace " # dev_reg_pub_result[0].0);
         let dev_sub_result2 = await Self.subscribe({
             namespace = "hackathon";
             subscriber = dev;
@@ -443,7 +490,7 @@ actor class ICRC72Broadcaster() = Self {
             id = 3;
         };
         let event3_result = await Self.handleNewEvent(event3);
-        Debug.print("test_hackathon: event3_result: " # Bool.toText(event3_result[0].1));
+        Debug.print("test_hackathon: event3_result: " # Bool.toText(event3_result[0].1) # " " # event3_result[0].0);
         assert event3_result[0].1 == true;
 
         // School publishes final event to school.news
@@ -455,7 +502,7 @@ actor class ICRC72Broadcaster() = Self {
             id = 4;
         };
         let handle_event3 = await Self.handleNewEvent(event4);
-        Debug.print("test_hackathon: handle_event3: " # Bool.toText(handle_event3[0].1));
+        Debug.print("test_hackathon: handle_event3: " # Bool.toText(handle_event3[0].1) # " " # handle_event3[0].0);
         assert (handle_event3[0].1 == true);
         // All assertions passed
         return true;
