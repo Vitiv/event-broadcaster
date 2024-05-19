@@ -17,7 +17,7 @@
   <meta name="description" content="Combine pub-sub app" />
 </svelte:head>
 <main
-  style="background-image: url({back}); background-size: cover; background-repeat: no-repeat; background-position: center center; height: 100vh;"
+  style="background-image: url({back}); background-size: cover; background-repeat: no-repeat; background-position: center center; height: 120vh;"
 >
   <NavMenu items={menuItems} />
   <MainComponent />

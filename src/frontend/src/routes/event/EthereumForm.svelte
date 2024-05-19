@@ -90,7 +90,17 @@
             getLogArgs: JSON.stringify(getLogArgs),
         };
         console.log("Request data ", data);
-        console.log("Added cycles ", estimatedCost);
+
+        // let est_back = await backend.requestCost(
+        //     { source: provider },
+        //     data.getLogArgs,
+        //     maxResponseBytes,
+        // );
+        // console.log("Estimated cost from RPC: ", est_back);
+        // console.log(
+        //     "Added cycles ",
+        //     estimatedCost > est_back ? estimatedCost : est_back,
+        // );
 
         const response = await backend.getEthLogs(
             source,
@@ -104,8 +114,9 @@
             getLogArgs.topics,
             estimatedCost,
         );
-        const parsedResult = parseMultiGetLogsResult(response);
-        console.log(parsedResult);
+        console.log("Eth Response ", response);
+        // const parsedResult = parseMultiGetLogsResult(response);
+        // console.log(parsedResult);
         dispatch("submit", {
             formData: { source, provider, config, getLogArgs, response },
         });
@@ -135,7 +146,6 @@
             0,
         );
         const blockTagSize = 8;
-        const payloadSizeBytes = addressSize + topicSize + 2 * blockTagSize;
         const service = {
             api: network,
             provider: provider,
@@ -368,6 +378,19 @@
         width: 100%;
     }
 
+    #network,
+    #provider,
+    #block-tag-from,
+    #block-tag-to,
+    #from-block,
+    #to-block,
+    #address,
+    #topic,
+    #max-response-size,
+    #estimate-cost {
+        color: aquamarine;
+    }
+
     .form-input {
         width: 100%;
         max-width: 400px;
@@ -429,9 +452,20 @@
         margin-top: 1.5rem;
         font-size: 1rem;
     }
+    #from-block,
+    #to-block,
+    #max-response-size {
+        width: 100%;
+        max-width: 380px;
+    }
 
     .form-button-filter:hover,
     .form-button-subscribe:hover {
         background-color: #24bbe1;
+    }
+
+    .form-input option {
+        background-color: #333;
+        color: white;
     }
 </style>

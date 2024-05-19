@@ -2,8 +2,12 @@
 	import { backend } from "$lib/canisters";
 	import { Principal } from "@dfinity/principal";
 	import { createEventDispatcher } from "svelte";
+	import { writable } from "svelte/store";
 
-	let publisherPrincipal = "aaaaa-aa";
+	let message = writable("");
+	let messageType = writable(""); // for storing the type of message to be displayed (success or error)
+
+	let publisherPrincipal = "mmt3g-qiaaa-aaaal-qi6ra-cai";
 	let namespace = "";
 	let eventData = "";
 	let eventType = "";
@@ -11,16 +15,33 @@
 
 	const dispatch = createEventDispatcher();
 
+	let number = 0;
+
+	function addRandomNumber() {
+		const randomNum = Math.floor(Math.random() * 1000);
+		number += randomNum;
+	}
+
 	async function publishEvent() {
 		console.log("publishEvent: Publisher: ", publisherPrincipal);
+		addRandomNumber();
 		const event = {
+			id: number, // new event ID
 			namespace,
 			source: Principal.fromText(publisherPrincipal),
-			timestamp: Date.now(),
-			data: parseData(eventData, dataType),
-			id: 2, // updated event ID
+			data: eventData,
+			dataType: dataType,
 		};
-		const response = await backend.handleNewEvent(event);
+		const response = await backend.createEvent(event);
+		console.log("Publish Response: ", response);
+		if (response) {
+			message.set("Event published successfully.");
+			messageType.set("success");
+		} else {
+			message.set("Failed to published event");
+			messageType.set("error");
+		}
+
 		dispatch("submit", {
 			formData: {
 				publisherPrincipal,
@@ -33,36 +54,27 @@
 		});
 	}
 
-	function parseData(data, type) {
-		switch (type) {
-			case "Int":
-				return { Int: BigInt(data) };
-			case "Nat":
-				return { Nat: BigInt(data) };
-			case "Bool":
-				return { Bool: data.toLowerCase() === "true" };
-			case "Float":
-				return { Float: parseFloat(data) };
-			case "Text":
-				return { Text: data };
-			default:
-				throw new Error("Unsupported data type");
-		}
-	}
-
 	async function publishEventWithResponse() {
 		console.log(
 			"publishEventWithResponse: Publisher: ",
 			publisherPrincipal,
 		);
+		addRandomNumber();
 		const event = {
+			id: 2 + number, // new event ID
 			namespace,
 			source: Principal.fromText(publisherPrincipal),
-			timestamp: 0,
 			data: eventData,
-			id: 2, // updated event ID
+			dataType: dataType,
 		};
-		const response = await backend.handleNewEvent(event);
+		const response = await backend.createEvent(event);
+		if (response) {
+			message.set("Event published successfully.");
+			messageType.set("success");
+		} else {
+			message.set("Failed to published event");
+			messageType.set("error");
+		}
 		dispatch("submit", {
 			formData: {
 				publisherPrincipal,
@@ -97,14 +109,13 @@
 	</div>
 
 	<div class="form-group">
-		<label for="dataType">Event Data Type</label>
-		<select id="dataType" class="form-input" bind:value={dataType}>
+		<label for="data-type">Event Data Type</label>
+		<select id="data-type" class="form-input" bind:value={dataType}>
 			<option value="Text">Text</option>
 			<option value="Int">Int</option>
 			<option value="Nat">Nat</option>
 			<option value="Bool">Bool</option>
 			<option value="Float">Float</option>
-			<!-- Add data types here -->
 		</select>
 	</div>
 
@@ -118,129 +129,23 @@
 				bind:value={eventData}
 				required
 			/>
-			<button class="form-button-filter" on:click={publishEvent}
+			<button class="form-button-data" on:click={publishEvent}
 				>Publish</button
 			>
 		</div>
+	</div>
+	<div
+		class="message"
+		class:success={$messageType === "success"}
+		class:error={$messageType === "error"}
+	>
+		{$message}
 	</div>
 
 	<button class="form-button-subscribe" on:click={publishEventWithResponse}>
 		Publish Event with Response
 	</button>
 </div>
-
-<!-- <script>
-	import { backend } from "$lib/canisters";
-	import { Principal } from "@dfinity/principal";
-	import { createEventDispatcher } from "svelte";
-
-	let publisherPrincipal = "aaaaa-aa";
-	let namespace = "";
-	let eventData = "";
-	let eventType = "";
-	let dataType = "Text";
-
-	const dispatch = createEventDispatcher();
-
-	async function publishEvent() {
-		console.log("publishEvent: Publisher: ", publisherPrincipal);
-		const event = {
-			namespace,
-			source: Principal.fromText(publisherPrincipal),
-			timestamp: Date.now(),
-			data: parseData(eventData, dataType),
-			id: 2, // updated event ID
-		};
-		const response = await backend.handleNewEvent(event);
-		dispatch("submit", {
-			formData: {
-				publisherPrincipal,
-				namespace,
-				dataType,
-				eventData,
-				eventType,
-				response,
-			},
-		});
-	}
-
-	function parseData(data, type) {
-		switch (type) {
-			case "Int":
-				return { Int: BigInt(data) };
-			case "Nat":
-				return { Nat: BigInt(data) };
-			case "Bool":
-				return { Bool: data.toLowerCase() === "true" };
-			case "Float":
-				return { Float: parseFloat(data) };
-			case "Text":
-				return { Text: data };
-			default:
-				throw new Error("Unsupported data type");
-		}
-	}
-
-	async function publishEventWithResponse() {
-		console.log(
-			"publishEventWithResponse: Publisher: ",
-			publisherPrincipal,
-		);
-		const event = {
-			namespace,
-			source: Principal.fromText(publisherPrincipal),
-			timestamp: 0,
-			data: eventData,
-			id: 2, // updated event ID
-		};
-		const response = await backend.handleNewEvent(event);
-		dispatch("submit", {
-			formData: {
-				publisherPrincipal,
-				namespace,
-				eventData,
-				eventType,
-				response,
-			},
-		});
-	}
-</script>
-
-<div>
-	<div>
-		<label for="publisher-principal">Publisher:</label>
-		<input
-			id="publisher-principal"
-			type="text"
-			bind:value={publisherPrincipal}
-		/>
-	</div>
-
-	<div>
-		<label for="namespace">Namespace:</label>
-		<input id="namespace" type="text" bind:value={namespace} />
-	</div>
-
-	<div>
-		<label for="dataType">Event Data Type:</label>
-		<select id="dataType" bind:value={dataType}>
-			<option value="Text">Text</option>
-			<option value="Int">Int</option>
-			<option value="Nat">Nat</option>
-			<option value="Bool">Bool</option>
-			<option value="Float">Float</option>
-		</select>
-	</div>
-	<div>
-		<label for="event-data">Event Data:</label>
-		<input type="text" id="event-data" bind:value={eventData} required />
-	</div>
-
-	<button on:click={publishEvent}>Publish Event</button>
-	<button on:click={publishEventWithResponse}
-		>Publish Event with Response</button
-	>
-</div> -->
 
 <style>
 	.form-container {
@@ -264,6 +169,18 @@
 		font-weight: bold;
 		font-size: 0.8rem;
 		color: white;
+	}
+
+	.form-input {
+		color: rgb(58, 244, 216);
+	}
+
+	#data-type {
+		font-family: "Lexend Zetta", sans-serif;
+		margin-bottom: 0.5rem;
+		font-weight: bold;
+		font-size: 1rem;
+		color: rgb(58, 244, 216);
 	}
 
 	.filter-group {
@@ -297,6 +214,7 @@
 		border-radius: 4px;
 		background-color: transparent;
 		box-shadow: -5px -5px 15px rgba(158, 246, 244, 0.5);
+		color: rgb(58, 244, 216);
 	}
 
 	.form-input::placeholder,
@@ -314,7 +232,7 @@
 		outline: none;
 	}
 
-	.form-button-filter,
+	.form-button-data,
 	.form-button-subscribe {
 		font-family: "Lexend Zetta", sans-serif;
 		border: white 1px solid;
@@ -325,9 +243,9 @@
 		transition: background-color 0.3s;
 	}
 
-	.form-button-filter {
+	.form-button-data {
 		padding: 0.4rem;
-		max-width: 60px;
+		max-width: 120px;
 		font-size: 0.9rem;
 	}
 
@@ -339,8 +257,27 @@
 		font-size: 1rem;
 	}
 
-	.form-button-filter:hover,
+	.form-button-data:hover,
 	.form-button-subscribe:hover {
 		background-color: #24bbe1;
+	}
+
+	.message {
+		margin-top: 1rem;
+		padding: 0.5rem;
+		border-radius: 5px;
+		font-family: "Lexend Zetta", sans-serif;
+	}
+
+	.success {
+		color: #1cd41c;
+		background-color: #d4edda;
+		border-color: #c3e6cb;
+	}
+
+	.error {
+		color: #721c24;
+		background-color: #f8d7da;
+		border-color: #f5c6cb;
 	}
 </style>
