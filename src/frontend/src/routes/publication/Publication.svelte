@@ -6,7 +6,6 @@
 
     let publisher = "";
     let namespace = "";
-    let stats = [];
 
     let message = writable(""); // for storing the message to be displayed
     let messageType = writable(""); // for storing the type of message to be displayed (success or error)

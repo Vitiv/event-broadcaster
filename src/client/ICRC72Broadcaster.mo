@@ -1,21 +1,23 @@
 import Array "mo:base/Array";
+import Bool "mo:base/Bool";
+import Buffer "mo:base/Buffer";
+import Debug "mo:base/Debug";
+import Int "mo:base/Int";
+import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
+import Nat32 "mo:base/Nat32";
+import Nat64 "mo:base/Nat64";
+import Option "mo:base/Option";
 import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
-import Iter "mo:base/Iter";
-import Debug "mo:base/Debug";
-import Bool "mo:base/Bool";
-import Buffer "mo:base/Buffer";
-import Nat64 "mo:base/Nat64";
-import Int "mo:base/Int";
-import Nat32 "mo:base/Nat32";
+import Time "mo:base/Time";
 
+import T "./EthTypes";
+import EthSender "./EventSender";
 import Publisher "./publications/PublisherManager";
 import SubscriptionManager "./subscriptions/SubscriptionManager";
 import Types "ICRC72Types";
-import T "./EthTypes";
-import EthSender "./EventSender";
 import Utils "Utils";
 
 actor class ICRC72Broadcaster() = Self {
@@ -99,6 +101,8 @@ actor class ICRC72Broadcaster() = Self {
         filter : Text;
     };
 
+    private var receivedMessages : [Types.Message] = [];
+
     type SubscriptionInfo = {
         subscriber : Principal;
         namespace : Text;
@@ -123,19 +127,31 @@ actor class ICRC72Broadcaster() = Self {
 
     public func createEvent({
         id : Nat;
-        timestamp : Nat;
         namespace : Text;
         source : Principal;
+        dataType : Text;
         data : Text;
-    }) : async [(Text, Bool)] {
+    }) : async Bool {
+        let data_type = switch (dataType) {
+            case ("Text") { #Text(data) };
+            // case ("Int") { #Int(Int.fromText(data)) };
+            case ("Nat") {
+                let n = Option.get(Nat.fromText(data), 0);
+                #Nat(n);
+            };
+            case ("Bool") { if (data == "true") #Bool(true) else #Bool(false) };
+            // case ("Float") { #Float(Float.fromText(data)) };
+            case (_) { #Text(data) };
+        };
         let event : Types.EventRelay = {
             id = id;
-            timestamp = timestamp;
+            timestamp = Nat32.toNat(Nat32.fromIntWrap(Time.now()));
             namespace = namespace;
             source = source;
-            data = #Text(data);
+            data = data_type;
         };
-        await handleNewEvent(event);
+        let result = await handleNewEvent(event);
+        result[0].1;
     };
 
     public shared func handleNewEvent(event : Types.EventRelay) : async [(Text, Bool)] {
@@ -250,26 +266,32 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     // Subscription handling
-    /*   icrc72_handle_notification([Message]) : async ();
-        icrc72_handle_notification_trusted([Message]) : async {
-            #Ok : Value;
-            #Err : Text;
-        }; */
 
     public func icrc72_handle_notification(messages : [Types.Message]) : async () {
         Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
         Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
+        receivedMessages := Utils.appendArray<Types.Message>(receivedMessages, messages);
     };
 
     public func icrc72_handle_notification_trusted(messages : [Types.Message]) : async [Result.Result<Bool, Text>] {
         Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
         Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
+        receivedMessages := Utils.appendArray(receivedMessages, messages);
+
         Array.map<Types.Message, Result.Result<Bool, Text>>(
             messages,
             func(message) : Result.Result<Bool, Text> {
                 #ok true;
             },
         );
+    };
+
+    public func getReceivedMessages() : async [Types.Message] {
+        receivedMessages;
+    };
+
+    public func clearReceivedMessages() : async () {
+        receivedMessages := [];
     };
 
     // Registers a publication for a subscriber in the specified namespace.
@@ -510,6 +532,28 @@ actor class ICRC72Broadcaster() = Self {
 
     //-----------------------------------------------------------------------------
     // Ethereum Event Sender
+
+    public func ethTest() : async (Text) {
+        let source = #EthMainnet(?[#Cloudflare]);
+        let config = ?{ responseSizeEstimate = ?Nat64.fromNat(2000) };
+        let getLogArgs = {
+            addresses = ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"];
+            fromBlock : ?T.BlockTag = ? #Number(19188367);
+            toBlock : ?T.BlockTag = ? #Number(19188367);
+            topics = ?[["0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c", "0x0000000000000000000000003fc91a3afd70395cd496c647d5a6cc9d4b2b7fad"]];
+        };
+        let result = await EthSender.eth_getLogs(source, config, getLogArgs, 2000000000);
+        switch (result) {
+            case (#Consistent(_)) {
+                Debug.print("ethTest: Ok. Consistent response from EthMainnet, block 19188367");
+                return "ethTest: Ok. Consistent response from EthMainnet, block 19188367";
+            };
+            case (_) {
+                Debug.print("ethTest: Inconsistent");
+                "ethTest: Inconsistent";
+            };
+        };
+    };
 
     public func requestCost(source : T.RpcService, jsonRequest : Text, maxResponseBytes : Nat) : async Nat {
         await EthSender.requestCost(source, jsonRequest, Nat64.fromNat(maxResponseBytes));

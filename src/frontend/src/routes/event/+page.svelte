@@ -24,7 +24,7 @@
 </script>
 
 <main
-    style="background-image: url({back}); background-size: cover; background-repeat: no-repeat; background-position: center center; height: 100vh;"
+    style="background-image: url({back}); background-size: cover; background-repeat: no-repeat; background-position: center center; height: 190vh;"
 >
     <NavMenu items={menuItems} />
     <div class="form-wrapper">
@@ -32,9 +32,7 @@
 
         <label for="event-type">Event Type:</label>
         <select id="event-type" bind:value={eventType}>
-            <option disabled selected value=""
-                >-- Select an Event Type --</option
-            >
+            <option disabled selected value="">- Select Event Type -</option>
             <option value="EthereumEvent">Ethereum</option>
             <option value="NFTCanister">NFT</option>
             <option value="News">News</option>
@@ -67,6 +65,26 @@
         font-size: 1.5rem;
         font-family: "Lexend Zetta", sans-serif;
         margin-bottom: 2rem;
+        color: white;
+    }
+
+    .form-wrapper label {
+        font-family: "Lexend Zetta", sans-serif;
+        font-weight: bold;
+        font-size: 1rem;
+        color: white;
+        margin-left: 15px;
+    }
+
+    #event-type {
+        font-family: "Lexend Zetta", sans-serif;
+        font-weight: bold;
+        font-size: 0.75rem;
+        color: rgb(33, 203, 175);
+        margin-bottom: 2rem;
+    }
+    #event-type option {
+        background-color: #333;
         color: white;
     }
 </style>
