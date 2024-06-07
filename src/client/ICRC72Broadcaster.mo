@@ -30,19 +30,24 @@ actor class ICRC72Broadcaster() = Self {
 
     type EventRelay = {
         id : Nat;
+        prevId : ?Nat;
         timestamp : Nat;
         namespace : Text;
         source : Principal;
         data : ICRC16;
+        headers : ?ICRC16Map;
     };
 
     type EventNotification = {
         id : Nat;
         eventId : Nat;
+        preEventId : ?Nat;
         timestamp : Nat;
         namespace : Text;
         data : ICRC16;
         source : Principal;
+        headers : ?ICRC16Map;
+        filter : ?Text;
     };
 
     type ICRC16Property = {
