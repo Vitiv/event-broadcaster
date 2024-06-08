@@ -21,12 +21,12 @@ import Types "ICRC72Types";
 import Utils "Utils";
 
 actor class ICRC72Broadcaster() = Self {
-    type Event = {
-        id : Nat;
-        timestamp : Nat;
-        namespace : Text;
-        data : ICRC16;
-    };
+    // type Event = {
+    //     id : Nat;
+    //     timestamp : Nat;
+    //     namespace : Text;
+    //     data : ICRC16;
+    // };
 
     type EventRelay = {
         id : Nat;
@@ -97,16 +97,16 @@ actor class ICRC72Broadcaster() = Self {
         #Map : [(Text, Value)];
     };
 
-    type Message = {
-        id : Nat;
-        timestamp : Nat;
-        namespace : Text;
-        data : ICRC16;
-        source : Principal;
-        filter : Text;
-    };
+    // type Message = {
+    //     id : Nat;
+    //     timestamp : Nat;
+    //     namespace : Text;
+    //     data : ICRC16;
+    //     source : Principal;
+    //     filter : Text;
+    // };
 
-    private var receivedMessages : [Types.Message] = [];
+    // private var receivedMessages : [Types.EventNotification] = [];
 
     type SubscriptionInfo = {
         subscriber : Principal;
@@ -116,8 +116,8 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     type SubscriberActor = actor {
-        icrc72_handle_notification([Message]) : async ();
-        icrc72_handle_notification_trusted([Message]) : async [{
+        icrc72_handle_notification([EventNotification]) : async ();
+        icrc72_handle_notification_trusted([EventNotification]) : async [{
             #Ok : Value;
             #Err : Text;
         }];
@@ -154,37 +154,62 @@ actor class ICRC72Broadcaster() = Self {
             namespace = namespace;
             source = source;
             data = data_type;
+            headers = null;
+            prevId = null;
         };
         let result = await handleNewEvent(event);
         result[0].1;
     };
 
-    public shared func handleNewEvent(event : Types.EventRelay) : async [(Text, Bool)] {
-        let result_buffer = Buffer.Buffer<(Text, Bool)>(0);
+    public shared func handleNewEvent(event : Types.EventRelay) : async [(Nat, Bool)] {
+        let result_buffer = Buffer.Buffer<(Nat, Bool)>(0);
         let eventFilters = parseNamespace(event.namespace);
         if (eventFilters.size() == 0) {
-            return [("No namespaces", false)];
+            return [(0, false)];
         };
         // Get subscribers by filter
         for (filter in eventFilters.vals()) {
             let _principals = await subManager.getSubscribersByNamespace(filter);
             if (_principals.size() == 0) {
-                return [("No subscribers by namespace", false)];
+                return [(0, false)];
             };
             // Convert Principals to Subscribers
             let _subscribers = Array.map<Principal, Types.Subscriber>(_principals, func(p : Principal) : Types.Subscriber { { subscriber = p; filter = eventFilters } });
             // send event to subscribers
             let publish_result = await pubManager.publishEventToSubscribers(_subscribers, event);
-            result_buffer.add(filter, publish_result);
+            result_buffer.add(event.id, publish_result.size() > 0);
             // ignore await increasePublicationMessagesSentStats(event.source, event.namespace, "messagesSent");
         };
         Buffer.toArray(result_buffer);
     };
 
-    // key = "messagesSent"
-    func increasePublicationMessagesSentStats(publisher : Principal, namespace : Text, key : Text) : async Nat {
-        await pubManager.increasePublicationMessagesSentStats(publisher, namespace, key);
+    public func icrc72_publish(events : [Types.EventRelay]) : async [{
+        Ok : [Nat];
+        Err : [Types.PublishError];
+    }] {
+        let success_buffer = Buffer.Buffer<Nat>(0);
+        let error_buffer = Buffer.Buffer<Types.PublishError>(0);
+        for (event in events.vals()) {
+            let result = await handleNewEvent(event);
+            switch (result[0].1) {
+                case (true) {
+                    success_buffer.add(result[0].0);
+                };
+                case (false) {
+                    error_buffer.add(#Unauthorized);
+                };
+            };
+        };
+        return [{
+            Ok = Buffer.toArray(success_buffer);
+            Err = Buffer.toArray(error_buffer);
+        }];
     };
+
+    // key = "messagesSent"
+    // func increasePublicationMessagesSentStats(publisher : Principal, namespace : Text, key : Text) : async Nat {
+    //     await pubManager.increasePublicationMessagesSentStats(publisher, namespace, key);
+    // };
 
     func parseNamespace(namespace : Text) : [Text] {
         let delimiter = #char '.';
@@ -222,16 +247,21 @@ actor class ICRC72Broadcaster() = Self {
         await subManager.icrc72_register_single_subscription(subscription);
     };
 
+    // TODO: add allowlist for getting subscribers by namespace
     public func getSubscribersByNamespace(namespace : Text) : async [Principal] {
         await subManager.getSubscribersByNamespace(namespace);
     };
 
+    // TODO: add allowlist for getting all subscriptions
     public func getSubcriptions() : async [Types.SubscriptionInfo] {
         await subManager.getSubscriptions();
     };
 
-    public func unsubscribeAll(subscriber : Principal) : async () {
-        await subManager.unsubscribeAll(subscriber);
+    public shared ({ caller }) func unsubscribeAll(subscriber : Principal) : async () {
+        // TODO change to allow list
+        if (Principal.equal(caller, subscriber)) {
+            await subManager.unsubscribeAll(subscriber);
+        };
     };
 
     public func unsubscribeByNamespace(subscriber : Principal, namespace : Text) : async () {
@@ -248,7 +278,7 @@ actor class ICRC72Broadcaster() = Self {
         );
     };
 
-    public func notify_subscribers(event : Event) : async Result.Result<Bool, Text> {
+    public func notify_subscribers(event : EventRelay) : async Result.Result<Bool, Text> {
         // Send notification to all subscribers
         Debug.print("notify_subscribers: event: " # Nat.toText(event.id) # " " # event.namespace);
         #ok true;
@@ -270,34 +300,34 @@ actor class ICRC72Broadcaster() = Self {
         );
     };
 
-    // Subscription handling
+    // // Subscription handling
 
-    public func icrc72_handle_notification(messages : [Types.Message]) : async () {
-        Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
-        Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
-        receivedMessages := Utils.appendArray<Types.Message>(receivedMessages, messages);
-    };
+    // public func icrc72_handle_notification(messages : [Types.EventNotification]) : async () {
+    //     Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
+    //     Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
+    //     receivedMessages := Utils.appendArray<Types.Message>(receivedMessages, messages);
+    // };
 
-    public func icrc72_handle_notification_trusted(messages : [Types.Message]) : async [Result.Result<Bool, Text>] {
-        Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
-        Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
-        receivedMessages := Utils.appendArray(receivedMessages, messages);
+    // public func icrc72_handle_notification_trusted(messages : [Types.EventNotification]) : async [Result.Result<Bool, Text>] {
+    //     Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
+    //     Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
+    //     receivedMessages := Utils.appendArray(receivedMessages, messages);
 
-        Array.map<Types.Message, Result.Result<Bool, Text>>(
-            messages,
-            func(message) : Result.Result<Bool, Text> {
-                #ok true;
-            },
-        );
-    };
+    //     Array.map<Types.Message, Result.Result<Bool, Text>>(
+    //         messages,
+    //         func(message) : Result.Result<Bool, Text> {
+    //             #ok true;
+    //         },
+    //     );
+    // };
 
-    public func getReceivedMessages() : async [Types.Message] {
-        receivedMessages;
-    };
+    // public func getReceivedMessages() : async [Types.Message] {
+    //     receivedMessages;
+    // };
 
-    public func clearReceivedMessages() : async () {
-        receivedMessages := [];
-    };
+    // public func clearReceivedMessages() : async () {
+    //     receivedMessages := [];
+    // };
 
     // Registers a publication for a subscriber in the specified namespace.
     //
@@ -357,6 +387,7 @@ actor class ICRC72Broadcaster() = Self {
 
     public func test() : async [(Principal, Types.Response)] {
         // register publication and subcsribe using e2e_subscriber canister
+        // for this test publisher = subscriber
         let subscriber = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
         let namespace = "hackathon.hackathon";
         let subscription : Types.SubscriptionInfo = {
@@ -389,6 +420,8 @@ actor class ICRC72Broadcaster() = Self {
             timestamp = 0;
             data = #Text("fff");
             id = 1;
+            headers = null;
+            prevId = null;
         };
         let handle_result = await handleNewEvent(event);
         Debug.print("test: handle_result: " # Bool.toText(handle_result[0].1));
@@ -416,6 +449,8 @@ actor class ICRC72Broadcaster() = Self {
             timestamp = 1;
             data = #Text("This should not be delivered.");
             id = 5;
+            headers = null;
+            prevId = null;
         };
         let wrongNamespaceResult = await Self.handleNewEvent(wrongNamespaceEvent);
         Debug.print("test_hackathon: Test for wrong namespace event handling: " # Bool.toText(wrongNamespaceResult[0].1));
@@ -467,6 +502,8 @@ actor class ICRC72Broadcaster() = Self {
             timestamp = 1;
             data = #Text("Hackathon announced! Get ready for coding challenges and prizes!");
             id = 1;
+            headers = null;
+            prevId = null;
         };
         let event2 = {
             namespace = school_publications[1].namespace;
@@ -474,11 +511,13 @@ actor class ICRC72Broadcaster() = Self {
             timestamp = 1;
             data = #Text("Hackathon registration is now open!");
             id = 2;
+            headers = null;
+            prevId = null;
         };
         let handle_event1 = await Self.handleNewEvent(event1);
-        Debug.print("test_hackathon: handle_event1: " # Bool.toText(handle_event1[0].1) # " " # handle_event1[0].0);
+        Debug.print("test_hackathon: handle_event1: " # Nat.toText(handle_event1[0].0));
         let handle_event2 = await Self.handleNewEvent(event2);
-        Debug.print("test_hackathon: handle_event2: " # Bool.toText(handle_event2[0].1) # " " # handle_event2[0].0);
+        Debug.print("test_hackathon: handle_event2: " # Nat.toText(handle_event2[0].0));
 
         // School registers subscription to school.hackathon
         let school_sub_result2 = await Self.subscribe({
@@ -515,9 +554,11 @@ actor class ICRC72Broadcaster() = Self {
             timestamp = 1;
             data = #Text("I'm registering for the hackathon!");
             id = 3;
+            headers = null;
+            prevId = null;
         };
         let event3_result = await Self.handleNewEvent(event3);
-        Debug.print("test_hackathon: event3_result: " # Bool.toText(event3_result[0].1) # " " # event3_result[0].0);
+        Debug.print("test_hackathon: event3_result: " # Nat.toText(event3_result[0].0));
         assert event3_result[0].1 == true;
 
         // School publishes final event to school.news
@@ -527,9 +568,11 @@ actor class ICRC72Broadcaster() = Self {
             timestamp = 1;
             data = #Text("Hackathon results are in! Congratulations to all participants.");
             id = 4;
+            headers = null;
+            prevId = null;
         };
         let handle_event3 = await Self.handleNewEvent(event4);
-        Debug.print("test_hackathon: handle_event3: " # Bool.toText(handle_event3[0].1) # " " # handle_event3[0].0);
+        Debug.print("test_hackathon: handle_event3: " # Nat.toText(handle_event3[0].0));
         assert (handle_event3[0].1 == true);
         // All assertions passed
         return true;
