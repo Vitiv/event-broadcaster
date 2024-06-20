@@ -248,4 +248,10 @@ module {
         stats : [ICRC16Map];
     };
 
+    public type Permission = {
+        #Admin;
+        #Read;
+        #Write;
+    };
+
 };

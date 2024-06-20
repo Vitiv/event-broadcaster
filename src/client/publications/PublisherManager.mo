@@ -10,12 +10,22 @@ import Text "mo:base/Text";
 import Nat "mo:base/Nat";
 import Types "../ICRC72Types";
 import Utils "../Utils";
+import AllowListManager "../allowlist/AllowListManager";
 
 module {
     public class PublisherManager() = Self {
         type Namespace = Text;
         type PublicationId = (Principal, Namespace);
         type EventNotificationId = Nat;
+
+        var _deployer = Principal.fromText("aaaaa-aa");
+        let allowlist = AllowListManager.AllowListManager();
+
+        public func init(deployer : Principal) : async () {
+            _deployer := deployer;
+            await allowlist.initAllowlist(deployer);
+        };
+
         // func combineHashes(hash1 : Hash.Hash, hash2 : Hash.Hash) : Hash.Hash {
         //     return hash1 * 31 + hash2;
         // };
@@ -37,8 +47,19 @@ module {
 
         private var events = HashMap.HashMap<Principal, [Types.EventRelay]>(10, Principal.equal, Principal.hash);
 
+        // Check allowList
+
+        private func isUserInAllowList(user : Principal, permission : Types.Permission) : async Bool {
+            if (await allowlist.isUserInAllowList(user, permission)) {
+                return true;
+            };
+            false;
+        };
         // Register an single future publication by publisher with the specified namespace.
         public func register_single_publication(publisher : Principal, publication : Types.PublicationRegistration) : async (Namespace, Bool) {
+            if (not ((await isUserInAllowList(publisher, #Write)) or (await isUserInAllowList(publisher, #Admin)))) {
+                return (publication.namespace, false);
+            };
             // Validate the publication
             if (publication.namespace == "") {
                 return (publication.namespace, false);

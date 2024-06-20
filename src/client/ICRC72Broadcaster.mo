@@ -2,6 +2,8 @@ import Array "mo:base/Array";
 import Bool "mo:base/Bool";
 import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
+import Hash "mo:base/Hash";
+import HashMap "mo:base/HashMap";
 import Int "mo:base/Int";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
@@ -13,6 +15,8 @@ import Result "mo:base/Result";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
 
+import AllowListManager "./allowlist/AllowListManager";
+import BalanceManager "./balance/BalanceManager";
 import T "./EthTypes";
 import EthSender "./EventSender";
 import Publisher "./publications/PublisherManager";
@@ -97,16 +101,9 @@ actor class ICRC72Broadcaster() = Self {
         #Map : [(Text, Value)];
     };
 
-    // type Message = {
-    //     id : Nat;
-    //     timestamp : Nat;
-    //     namespace : Text;
-    //     data : ICRC16;
-    //     source : Principal;
-    //     filter : Text;
-    // };
-
-    // private var receivedMessages : [Types.EventNotification] = [];
+    private var receivedMessages : [Types.EventNotification] = [];
+    // recieved messages by source
+    private var messagesMap = HashMap.HashMap<Principal, [Types.EventNotification]>(10, Principal.equal, Principal.hash);
 
     type SubscriptionInfo = {
         subscriber : Principal;
@@ -125,8 +122,25 @@ actor class ICRC72Broadcaster() = Self {
 
     let default_publication_config = [("key", #Text("value"))];
 
+    var eventHubBalance = "event.hub.balance";
+
     private let subManager = SubscriptionManager.SubscriptionManager();
     private let pubManager = Publisher.PublisherManager();
+    let allowlist = AllowListManager.AllowListManager();
+
+    // init allowlist on startup
+    var initialized = false;
+
+    system func timer(setGlobalTimer : Nat64 -> ()) : async () {
+        if (not initialized) {
+            let deployer = Principal.fromActor(Self);
+
+            await allowlist.initAllowlist(deployer);
+            await pubManager.init(deployer);
+
+            initialized := true;
+        };
+    };
 
     // Create event part
 
@@ -302,32 +316,142 @@ actor class ICRC72Broadcaster() = Self {
 
     // // Subscription handling
 
-    // public func icrc72_handle_notification(messages : [Types.EventNotification]) : async () {
-    //     Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
-    //     Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
-    //     receivedMessages := Utils.appendArray<Types.Message>(receivedMessages, messages);
+    public func icrc72_handle_notification(messages : [Types.EventNotification]) : async () {
+        Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
+        Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
+        receivedMessages := Utils.appendArray<Types.EventNotification>(receivedMessages, messages);
+        for (message in messages.vals()) {
+            // eventHubBalance namespace handling
+            //TODO into a separate method handleNamespace(message : Types.EventNotification, namespace : Text) : async Result.Result<Bool, Text> {
+            if (message.namespace == eventHubBalance) {
+                let newBalance : Nat = switch (message.data) {
+                    case (#Nat(balance)) {
+                        balance;
+                    };
+                    case (#Text(balance)) {
+                        Option.get(Nat.fromText(balance), 0);
+                    };
+                    // case (#Int(balance)) {
+                    //     balance;
+                    // };
+                    case (_) 0;
+                };
+                let updateResult = await updateBalance(Principal.fromActor(Self), newBalance);
+            };
+            let existingMessage = messagesMap.get(message.source);
+            switch (existingMessage) {
+                case (null) messagesMap.put(message.source, [message]);
+                case (?m) {
+                    let newMessages = Utils.pushIntoArray<Types.EventNotification>(message, m);
+                    messagesMap.put(message.source, newMessages);
+                };
+            };
+        };
+    };
+
+    public func icrc72_handle_notification_trusted(messages : [Types.EventNotification]) : async [Result.Result<Bool, Text>] {
+        Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
+        Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
+        receivedMessages := Utils.appendArray(receivedMessages, messages);
+        for (message in messages.vals()) {
+            let existingMessage = messagesMap.get(message.source);
+            switch (existingMessage) {
+                case (null) messagesMap.put(message.source, [message]);
+                case (?m) {
+                    let newMessages = Utils.pushIntoArray(message, m);
+                    messagesMap.put(message.source, newMessages);
+                };
+            };
+        };
+        Array.map<Types.EventNotification, Result.Result<Bool, Text>>(
+            messages,
+            func(message) : Result.Result<Bool, Text> {
+                #ok true;
+            },
+        );
+    };
+
+    public func getReceivedMessages() : async [Types.EventNotification] {
+        receivedMessages;
+    };
+
+    public func getReceivedMessagesBySource(source : Text) : async [Types.EventNotification] {
+        let publisher = Principal.fromText(source);
+        let messages = messagesMap.get(publisher);
+        let result = switch (messages) {
+            case (null) [];
+            case (?m) m;
+        };
+    };
+
+    public func getReceivedMessagesByNamespace(namespace : Text) : async [Types.EventNotification] {
+        var resultMap = HashMap.HashMap<Types.EventNotification, Null>(
+            0,
+            func(x : Types.EventNotification, y : Types.EventNotification) : Bool {
+                x.timestamp == y.timestamp and x.namespace == y.namespace
+            },
+            func(x : Types.EventNotification) : Hash.Hash {
+                let namespaceHash = Text.hash(namespace);
+                let timestampHash = Hash.hash(x.timestamp);
+                return namespaceHash ^ timestampHash;
+            },
+        );
+        for (messages in messagesMap.vals()) {
+            for (message in messages.vals()) {
+                if (message.namespace == namespace) {
+                    resultMap.put(message, null);
+                };
+            };
+        };
+
+        Iter.toArray(resultMap.keys());
+    };
+
+    public func removeAllMessages(messages : [Types.EventNotification]) : async () {
+        messagesMap := HashMap.HashMap<Principal, [Types.EventNotification]>(10, Principal.equal, Principal.hash);
+    };
+
+    public func removeAllMessagesBySource(source : Text) : async Result.Result<Bool, Text> {
+        let publisher = Principal.fromText(source);
+        switch (messagesMap.get(publisher)) {
+            case (null) {
+                #err("No messages for source: " # source);
+            };
+            case (?messages) {
+                ignore messagesMap.remove(publisher);
+                #ok true;
+            };
+        };
+    };
+
+    // private func handleBalanceNamespace(message : Types.Types.EventNotification, namespace : Text) : async Result.Result<Bool, Text> {
+    //     if (message.namespace == namespace) {
+    //         let newBalance : Nat = switch (message.data) {
+    //             case (#Nat(balance)) {
+    //                 balance;
+    //             };
+    //             case (#Text(balance)) {
+    //                 Nat.fromText(balance);
+    //             };
+    //             case (#Int(balance)) {
+    //                 balance;
+    //             };
+    //             case (_) 0;
+    //         };
+    //         let updateResult = await updateBalance(Principal.fromActor(Self), newBalance);
+    //     };
+    //     #ok true;
     // };
 
-    // public func icrc72_handle_notification_trusted(messages : [Types.EventNotification]) : async [Result.Result<Bool, Text>] {
-    //     Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
-    //     Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
-    //     receivedMessages := Utils.appendArray(receivedMessages, messages);
+    // ----------------------------------------------------------------------------
+    // Balance
 
-    //     Array.map<Types.Message, Result.Result<Bool, Text>>(
-    //         messages,
-    //         func(message) : Result.Result<Bool, Text> {
-    //             #ok true;
-    //         },
-    //     );
-    // };
-
-    // public func getReceivedMessages() : async [Types.Message] {
-    //     receivedMessages;
-    // };
-
-    // public func clearReceivedMessages() : async () {
-    //     receivedMessages := [];
-    // };
+    public func updateBalance(user : Principal, balance : Nat) : async Result.Result<Nat, Text> {
+        let balanceUpdate = BalanceManager.BalanceManager();
+        ignore await balanceUpdate.updateBalance(user, balance);
+        #ok(await balanceUpdate.getBalance(user));
+    };
+    //---------------------------------------------------------------------------
 
     // Registers a publication for a subscriber in the specified namespace.
     //
