@@ -57,9 +57,9 @@ module {
         };
         // Register an single future publication by publisher with the specified namespace.
         public func register_single_publication(publisher : Principal, publication : Types.PublicationRegistration) : async (Namespace, Bool) {
-            if (not ((await isUserInAllowList(publisher, #Write)) or (await isUserInAllowList(publisher, #Admin)))) {
-                return (publication.namespace, false);
-            };
+            // if (not ((await isUserInAllowList(publisher, #Write)) or (await isUserInAllowList(publisher, #Admin)))) {
+            //     return (publication.namespace, false);
+            // };
             // Validate the publication
             if (publication.namespace == "") {
                 return (publication.namespace, false);
@@ -170,6 +170,7 @@ module {
             let buffer = Buffer.Buffer<(Principal, Types.Response)>(0);
             for (subscriber in subscribers.vals()) {
                 let subscriber_actor : Types.SubscriberActor = actor (Principal.toText(subscriber.subscriber));
+
                 let message : Types.EventNotification = {
                     id = notifications.size();
                     eventId = event.id;
@@ -179,7 +180,9 @@ module {
                     timestamp = event.timestamp;
                     data = event.data;
                     headers = event.headers;
-                    filter = ?subscriber.filter[0];
+                    filter = if (subscriber.filter.size() > 0) {
+                        ?subscriber.filter[0];
+                    } else null;
                 };
                 Debug.print("PubManager.publishEventWithResponse: Sending message to subscriber: " # Principal.toText(subscriber.subscriber));
                 let response = await subscriber_actor.icrc72_handle_notification_trusted([message]);
@@ -205,7 +208,9 @@ module {
                     timestamp = event.timestamp;
                     data = event.data;
                     headers = event.headers;
-                    filter = ?subscriber.filter[0];
+                    filter = if (subscriber.filter.size() > 0) {
+                        ?subscriber.filter[0];
+                    } else null;
                 };
                 saveEvent(event);
 
