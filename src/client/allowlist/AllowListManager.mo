@@ -17,13 +17,15 @@ module {
         var _deployer = Principal.fromText("aaaaa-aa");
         var _initialized = false;
 
+        let balanceManager = BalanceManager.BalanceManager();
+
         public func initAllowlist(deployer : Principal) : async () {
             let initResult = await setDeployer(deployer);
             switch (initResult) {
                 case (#ok(t)) {};
                 case (#err(e)) { Debug.print("Failed to initialize allowlist") };
             };
-            // TODO create subscription to get $EVENT balance updates
+            // create subscription to get $EVENT balance updates
             let subManager = SubscriptionManager.SubscriptionManager();
             let subscription : T.SubscriptionInfo = {
                 namespace = "event.hub.event.balance";
@@ -38,6 +40,7 @@ module {
             if (not create_subscription) {
                 Debug.print("Failed to create subscription");
             };
+
             // On $EVENT balance updates, add user to allowlist
 
             Debug.print("Initialized allowlist successfully");
@@ -75,7 +78,6 @@ module {
 
         // TODO Replace logic to checking $Event balance
         public func addToAllowList(user : Principal, permission : T.Permission) : async Result.Result<Bool, Text> {
-            let balanceManager = BalanceManager.BalanceManager();
             let balance = await balanceManager.getBalance(user);
 
             if (Principal.equal(user, _deployer) and balance > 0) {
@@ -91,7 +93,13 @@ module {
         public func isUserInAllowList(user : Principal, permission : T.Permission) : async Bool {
             switch (allowList.get((user, permission))) {
                 case (?_) true;
-                case null false;
+                case null {
+                    let balance = await balanceManager.getBalance(user);
+                    if (balance > 0) {
+                        allowList.put((user, permission), null);
+                        return true;
+                    } else return false;
+                };
             };
         };
 

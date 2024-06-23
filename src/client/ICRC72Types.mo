@@ -2,15 +2,6 @@ import Nat64 "mo:base/Nat64";
 import Buffer "mo:base/Buffer";
 
 module {
-    // public type Message = {
-    //     id : Nat;
-    //     timestamp : Nat;
-    //     namespace : Text;
-    //     data : ICRC16;
-    //     source : Principal;
-    //     filter : [Text];
-    // };
-
     public type ICRC16Property = {
         name : Text;
         value : ICRC16;
@@ -170,13 +161,6 @@ module {
     public type Response = {
         #Ok : Value;
         #Err : Text;
-    };
-
-    public type Event = {
-        id : Nat;
-        timestamp : Nat;
-        namespace : Text;
-        data : ICRC16;
     };
 
     public type EventRelay = {

@@ -18,19 +18,13 @@ import Time "mo:base/Time";
 import AllowListManager "./allowlist/AllowListManager";
 import BalanceManager "./balance/BalanceManager";
 import T "./EthTypes";
-// import EthSender "./EventSender";
+import EthSender "./EventSender";
 import Publisher "./publications/PublisherManager";
 import SubscriptionManager "./subscriptions/SubscriptionManager";
 import Types "ICRC72Types";
 import Utils "Utils";
 
 actor class ICRC72Broadcaster() = Self {
-    // type Event = {
-    //     id : Nat;
-    //     timestamp : Nat;
-    //     namespace : Text;
-    //     data : ICRC16;
-    // };
 
     type EventRelay = {
         id : Nat;
@@ -126,7 +120,8 @@ actor class ICRC72Broadcaster() = Self {
 
     private let subManager = SubscriptionManager.SubscriptionManager();
     private let pubManager = Publisher.PublisherManager();
-    let allowlist = AllowListManager.AllowListManager();
+    private let allowlist = AllowListManager.AllowListManager();
+    private let balanceManager = BalanceManager.BalanceManager();
 
     // init allowlist on startup
     var initialized = false;
@@ -140,6 +135,13 @@ actor class ICRC72Broadcaster() = Self {
 
             initialized := true;
         };
+    };
+
+    public shared (msg) func setBalanceLedgerCanisterId(ledgerCanisterId : Text) : async Bool {
+        if (Principal.isController(msg.caller)) {
+            return await balanceManager.setBalanceLedgerCanisterId(ledgerCanisterId);
+        };
+        false;
     };
 
     // Create event part
@@ -177,7 +179,7 @@ actor class ICRC72Broadcaster() = Self {
 
     public shared func handleNewEvent(event : Types.EventRelay) : async [(Nat, Bool)] {
         let result_buffer = Buffer.Buffer<(Nat, Bool)>(0);
-        let eventFilters = parseNamespace(event.namespace);
+        let eventFilters = [event.namespace]; //parseNamespace(event.namespace);
         if (eventFilters.size() == 0) {
             return [(0, false)];
         };
@@ -201,6 +203,13 @@ actor class ICRC72Broadcaster() = Self {
         Ok : [Nat];
         Err : [Types.PublishError];
     }] {
+        // TODO check balance
+        // TODO check allowlist
+        // TODO check if event is valid
+        // TODO check if event is already published
+        // TODO check if event is expired
+        // TODO check if event is already in the queue
+
         let success_buffer = Buffer.Buffer<Nat>(0);
         let error_buffer = Buffer.Buffer<Types.PublishError>(0);
         for (event in events.vals()) {
@@ -292,11 +301,11 @@ actor class ICRC72Broadcaster() = Self {
         );
     };
 
-    public func notify_subscribers(event : EventRelay) : async Result.Result<Bool, Text> {
-        // Send notification to all subscribers
-        Debug.print("notify_subscribers: event: " # Nat.toText(event.id) # " " # event.namespace);
-        #ok true;
-    };
+    // public func notify_subscribers(event : EventRelay) : async Result.Result<Bool, Text> {
+    //     // Send notification to all subscribers
+    //     Debug.print("notify_subscribers: event: " # Nat.toText(event.id) # " " # event.namespace);
+    //     #ok true;
+    // };
 
     func textToICRC16(text : Text) : ICRC16 {
         #Text(text);
@@ -317,27 +326,44 @@ actor class ICRC72Broadcaster() = Self {
     // // Subscription handling
 
     public func icrc72_handle_notification(messages : [Types.EventNotification]) : async () {
-        Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
-        Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
-        receivedMessages := Utils.appendArray<Types.EventNotification>(receivedMessages, messages);
+        // Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
+        // Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
+        // receivedMessages := Utils.appendArray<Types.EventNotification>(receivedMessages, messages);
         for (message in messages.vals()) {
             // eventHubBalance namespace handling
-            //TODO into a separate method handleNamespace(message : Types.EventNotification, namespace : Text) : async Result.Result<Bool, Text> {
             if (message.namespace == eventHubBalance) {
-                let newBalance : Nat = switch (message.data) {
-                    case (#Nat(balance)) {
-                        balance;
+                switch (message.data) {
+                    case (#Map(data)) {
+                        var newBalance : ?Nat = null;
+                        var user : ?Text = null;
+
+                        for ((key, value) in data.vals()) {
+                            switch (key, value) {
+                                case ("balance", #Nat(balance)) newBalance := ?balance;
+                                case ("user", #Text(userText)) user := ?userText;
+                                case _ {}; // Ignore other keys
+                            };
+                        };
+
+                        switch (newBalance, user) {
+                            case (?balance, ?userText) {
+                                if (userText == Principal.toText(Principal.fromActor(Self))) {
+                                    ignore await updateBalance(Principal.fromActor(Self), balance);
+                                };
+                            };
+                            case _ {
+                                // Missing balance or user data in the message
+                                Debug.print("Error: Missing balance or user data in the message");
+                            };
+                        };
                     };
-                    case (#Text(balance)) {
-                        Option.get(Nat.fromText(balance), 0);
+                    case _ {
+                        // Incorrect data format
+                        Debug.print("Error: Incorrect data format in the message");
                     };
-                    // case (#Int(balance)) {
-                    //     balance;
-                    // };
-                    case (_) 0;
                 };
-                let updateResult = await updateBalance(Principal.fromActor(Self), newBalance);
             };
+
             let existingMessage = messagesMap.get(message.source);
             switch (existingMessage) {
                 case (null) messagesMap.put(message.source, [message]);
@@ -350,9 +376,9 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     public func icrc72_handle_notification_trusted(messages : [Types.EventNotification]) : async [Result.Result<Bool, Text>] {
-        Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
-        Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
-        receivedMessages := Utils.appendArray(receivedMessages, messages);
+        // Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
+        // Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
+        // receivedMessages := Utils.appendArray(receivedMessages, messages);
         for (message in messages.vals()) {
             let existingMessage = messagesMap.get(message.source);
             switch (existingMessage) {
@@ -371,16 +397,20 @@ actor class ICRC72Broadcaster() = Self {
         );
     };
 
-    public func getReceivedMessages() : async [Types.EventNotification] {
-        receivedMessages;
+    public shared (msg) func getReceivedMessages() : async Result.Result<[(Principal, [Types.EventNotification])], Text> {
+        // if (not Principal.isController(msg.caller)) return #err("Only controller can call this method");
+        let res = Iter.toArray(messagesMap.entries());
+        #ok res;
     };
 
-    public func getReceivedMessagesBySource(source : Text) : async [Types.EventNotification] {
+    public shared (msg) func getReceivedMessagesBySource(source : Text) : async Result.Result<[Types.EventNotification], Text> {
+        // if (not Principal.isController(msg.caller)) return #err("Only controller can call this method");
+
         let publisher = Principal.fromText(source);
         let messages = messagesMap.get(publisher);
-        let result = switch (messages) {
-            case (null) [];
-            case (?m) m;
+        switch (messages) {
+            case (null) #ok([]);
+            case (?m) #ok m;
         };
     };
 
@@ -407,11 +437,14 @@ actor class ICRC72Broadcaster() = Self {
         Iter.toArray(resultMap.keys());
     };
 
-    public func removeAllMessages(messages : [Types.EventNotification]) : async () {
+    public shared (msg) func removeAllMessages(messages : [Types.EventNotification]) : async Result.Result<Nat, Text> {
+        if (not Principal.isController(msg.caller)) return #err("Only controller can remove all notifications");
         messagesMap := HashMap.HashMap<Principal, [Types.EventNotification]>(10, Principal.equal, Principal.hash);
+        #ok 0;
     };
 
-    public func removeAllMessagesBySource(source : Text) : async Result.Result<Bool, Text> {
+    public shared (msg) func removeAllMessagesBySource(source : Text) : async Result.Result<Bool, Text> {
+        if (not Principal.isController(msg.caller)) return #err("Only controller can remove notifications");
         let publisher = Principal.fromText(source);
         switch (messagesMap.get(publisher)) {
             case (null) {
@@ -424,32 +457,12 @@ actor class ICRC72Broadcaster() = Self {
         };
     };
 
-    // private func handleBalanceNamespace(message : Types.Types.EventNotification, namespace : Text) : async Result.Result<Bool, Text> {
-    //     if (message.namespace == namespace) {
-    //         let newBalance : Nat = switch (message.data) {
-    //             case (#Nat(balance)) {
-    //                 balance;
-    //             };
-    //             case (#Text(balance)) {
-    //                 Nat.fromText(balance);
-    //             };
-    //             case (#Int(balance)) {
-    //                 balance;
-    //             };
-    //             case (_) 0;
-    //         };
-    //         let updateResult = await updateBalance(Principal.fromActor(Self), newBalance);
-    //     };
-    //     #ok true;
-    // };
-
     // ----------------------------------------------------------------------------
     // Balance
 
-    public func updateBalance(user : Principal, balance : Nat) : async Result.Result<Nat, Text> {
-        let balanceUpdate = BalanceManager.BalanceManager();
-        ignore await balanceUpdate.updateBalance(user, balance);
-        #ok(await balanceUpdate.getBalance(user));
+    private func updateBalance(user : Principal, balance : Nat) : async Result.Result<Nat, Text> {
+        ignore await balanceManager.updateBalance(user, balance);
+        #ok(await balanceManager.getBalance(user));
     };
     //---------------------------------------------------------------------------
 
@@ -491,216 +504,216 @@ actor class ICRC72Broadcaster() = Self {
 
     //----------------------------------------------------------------------------------------
     // Tests
-    public func test_subc() : async (Bool, Text) {
-        let subscriber = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
-        let subscription : Types.SubscriptionInfo = {
-            namespace = "hackathon.hackathon";
-            subscriber = subscriber;
-            active = true;
-            filters = ["hackathon"];
-            messagesReceived = 0;
-            messagesRequested = 0;
-            messagesConfirmed = 0;
-        };
+    // public func test_subc() : async (Bool, Text) {
+    //     let subscriber = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
+    //     let subscription : Types.SubscriptionInfo = {
+    //         namespace = "hackathon.hackathon";
+    //         subscriber = subscriber;
+    //         active = true;
+    //         filters = ["hackathon"];
+    //         messagesReceived = 0;
+    //         messagesRequested = 0;
+    //         messagesConfirmed = 0;
+    //     };
 
-        let result = await subscribe(subscription);
-        let subscribersList = await subManager.getSubscribersByNamespace(subscription.namespace);
-        Debug.print("Test_subc: subscribersList size: " # Nat.toText(subscribersList.size()));
-        (result, subscription.namespace);
-    };
+    //     let result = await subscribe(subscription);
+    //     let subscribersList = await subManager.getSubscribersByNamespace(subscription.namespace);
+    //     Debug.print("Test_subc: subscribersList size: " # Nat.toText(subscribersList.size()));
+    //     (result, subscription.namespace);
+    // };
 
-    public func test() : async [(Principal, Types.Response)] {
-        // register publication and subcsribe using e2e_subscriber canister
-        // for this test publisher = subscriber
-        let subscriber = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
-        let namespace = "hackathon.hackathon";
-        let subscription : Types.SubscriptionInfo = {
-            namespace = namespace;
-            subscriber = subscriber;
-            active = true;
-            filters = ["hackathon"];
-            messagesReceived = 0;
-            messagesRequested = 0;
-            messagesConfirmed = 0;
-        };
+    // public func test() : async [(Principal, Types.Response)] {
+    //     // register publication and subcsribe using e2e_subscriber canister
+    //     // for this test publisher = subscriber
+    //     let subscriber = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
+    //     let namespace = "hackathon.hackathon";
+    //     let subscription : Types.SubscriptionInfo = {
+    //         namespace = namespace;
+    //         subscriber = subscriber;
+    //         active = true;
+    //         filters = ["hackathon"];
+    //         messagesReceived = 0;
+    //         messagesRequested = 0;
+    //         messagesConfirmed = 0;
+    //     };
 
-        let reg_pub_result = await pubManager.register_publications(
-            subscriber,
-            [
-                {
-                    namespace = namespace;
-                    config = default_publication_config;
-                },
-            ],
-        );
-        Debug.print("test: reg_pub_result: namespace = " # reg_pub_result[0].0 # " , result = " # Bool.toText(reg_pub_result[0].1));
-        let sub_result = await subscribe(subscription);
-        Debug.print("test: sub_result: " # Bool.toText(sub_result));
+    //     let reg_pub_result = await pubManager.register_publications(
+    //         subscriber,
+    //         [
+    //             {
+    //                 namespace = namespace;
+    //                 config = default_publication_config;
+    //             },
+    //         ],
+    //     );
+    //     Debug.print("test: reg_pub_result: namespace = " # reg_pub_result[0].0 # " , result = " # Bool.toText(reg_pub_result[0].1));
+    //     let sub_result = await subscribe(subscription);
+    //     Debug.print("test: sub_result: " # Bool.toText(sub_result));
 
-        // publish event using e2e_publisher canister
-        let event : Types.EventRelay = {
-            namespace = namespace;
-            source = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
-            timestamp = 0;
-            data = #Text("fff");
-            id = 1;
-            headers = null;
-            prevId = null;
-        };
-        let handle_result = await handleNewEvent(event);
-        Debug.print("test: handle_result: " # Bool.toText(handle_result[0].1));
-        let subscribersList = await subManager.getSubscribersByNamespace(namespace);
-        Debug.print("test: subscribersList size: " # Nat.toText(subscribersList.size()));
-        let subscribers = Array.map<Principal, Types.Subscriber>(subscribersList, func(p : Principal) : Types.Subscriber { { subscriber = p; filter = [namespace] } });
-        for (subscriber in subscribers.vals()) {
-            Debug.print("test: subscriber: " # Principal.toText(subscriber.subscriber) # " , filter: " # subscriber.filter[0]);
-        };
-        // publish to trusted canister
-        let publish_result = await pubManager.publishEventWithResponse(subscribers, event); // send event to trusted subscribers
-        Debug.print("test: publish_result: ");
-        publish_result;
-    };
+    //     // publish event using e2e_publisher canister
+    //     let event : Types.EventRelay = {
+    //         namespace = namespace;
+    //         source = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
+    //         timestamp = 0;
+    //         data = #Text("fff");
+    //         id = 1;
+    //         headers = null;
+    //         prevId = null;
+    //     };
+    //     let handle_result = await handleNewEvent(event);
+    //     Debug.print("test: handle_result: " # Bool.toText(handle_result[0].1));
+    //     let subscribersList = await subManager.getSubscribersByNamespace(namespace);
+    //     Debug.print("test: subscribersList size: " # Nat.toText(subscribersList.size()));
+    //     let subscribers = Array.map<Principal, Types.Subscriber>(subscribersList, func(p : Principal) : Types.Subscriber { { subscriber = p; filter = [namespace] } });
+    //     for (subscriber in subscribers.vals()) {
+    //         Debug.print("test: subscriber: " # Principal.toText(subscriber.subscriber) # " , filter: " # subscriber.filter[0]);
+    //     };
+    //     // publish to trusted canister
+    //     let publish_result = await pubManager.publishEventWithResponse(subscribers, event); // send event to trusted subscribers
+    //     Debug.print("test: publish_result: ");
+    //     publish_result;
+    // };
 
-    public func test_hackathon() : async Bool {
-        // Create principals for Dev, Broadcaster, and OnLineSchool
-        let dev = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
-        // let broadcaster = Principal.fromActor(Self);
-        let school = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
-        // Test Wrong Namespace
-        let wrongNamespaceEvent = {
-            namespace = "nonexistent.news";
-            source = school;
-            timestamp = 1;
-            data = #Text("This should not be delivered.");
-            id = 5;
-            headers = null;
-            prevId = null;
-        };
-        let wrongNamespaceResult = await Self.handleNewEvent(wrongNamespaceEvent);
-        Debug.print("test_hackathon: Test for wrong namespace event handling: " # Bool.toText(wrongNamespaceResult[0].1));
-        assert (not wrongNamespaceResult[0].1);
+    // public func test_hackathon() : async Bool {
+    //     // Create principals for Dev, Broadcaster, and OnLineSchool
+    //     let dev = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
+    //     // let broadcaster = Principal.fromActor(Self);
+    //     let school = Principal.fromText("bw4dl-smaaa-aaaaa-qaacq-cai");
+    //     // Test Wrong Namespace
+    //     let wrongNamespaceEvent = {
+    //         namespace = "nonexistent.news";
+    //         source = school;
+    //         timestamp = 1;
+    //         data = #Text("This should not be delivered.");
+    //         id = 5;
+    //         headers = null;
+    //         prevId = null;
+    //     };
+    //     let wrongNamespaceResult = await Self.handleNewEvent(wrongNamespaceEvent);
+    //     Debug.print("test_hackathon: Test for wrong namespace event handling: " # Bool.toText(wrongNamespaceResult[0].1));
+    //     assert (not wrongNamespaceResult[0].1);
 
-        // School registers publications
-        let school_publications : [Types.PublicationRegistration] = [
-            {
-                namespace = "school.news";
-                config = default_publication_config;
-            },
-            {
-                namespace = "hackathon";
-                config = default_publication_config;
-            },
-        ];
+    //     // School registers publications
+    //     let school_publications : [Types.PublicationRegistration] = [
+    //         {
+    //             namespace = "school.news";
+    //             config = default_publication_config;
+    //         },
+    //         {
+    //             namespace = "hackathon";
+    //             config = default_publication_config;
+    //         },
+    //     ];
 
-        let result_reg = await pubManager.register_publications(school, school_publications);
-        Debug.print("test_hackathon: result_reg: " # result_reg[0].0 # " " # Bool.toText(result_reg[0].1)); // result_reg: school.news true
-        let school_sub_result = await Self.subscribe({
-            namespace = school_publications[0].namespace;
-            subscriber = school;
-            active = true;
-            filters = ["school.news", "hackathon"];
-            messagesReceived = 0;
-            messagesRequested = 0;
-            messagesConfirmed = 0;
-        });
-        Debug.print("test_hackathon: school_sub_result: " # Bool.toText(school_sub_result));
-        assert school_sub_result == true;
+    //     let result_reg = await pubManager.register_publications(school, school_publications);
+    //     Debug.print("test_hackathon: result_reg: " # result_reg[0].0 # " " # Bool.toText(result_reg[0].1)); // result_reg: school.news true
+    //     let school_sub_result = await Self.subscribe({
+    //         namespace = school_publications[0].namespace;
+    //         subscriber = school;
+    //         active = true;
+    //         filters = ["school.news", "hackathon"];
+    //         messagesReceived = 0;
+    //         messagesRequested = 0;
+    //         messagesConfirmed = 0;
+    //     });
+    //     Debug.print("test_hackathon: school_sub_result: " # Bool.toText(school_sub_result));
+    //     assert school_sub_result == true;
 
-        // Dev registers subscription to school.news
-        let dev_sub_result = await Self.subscribe({
-            namespace = "school.news";
-            subscriber = dev;
-            active = true;
-            filters = ["school.news"];
-            messagesReceived = 0;
-            messagesRequested = 0;
-            messagesConfirmed = 0;
-        });
-        Debug.print("test_hackathon: dev_sub_result: " # Bool.toText(dev_sub_result));
-        assert dev_sub_result == true;
+    //     // Dev registers subscription to school.news
+    //     let dev_sub_result = await Self.subscribe({
+    //         namespace = "school.news";
+    //         subscriber = dev;
+    //         active = true;
+    //         filters = ["school.news"];
+    //         messagesReceived = 0;
+    //         messagesRequested = 0;
+    //         messagesConfirmed = 0;
+    //     });
+    //     Debug.print("test_hackathon: dev_sub_result: " # Bool.toText(dev_sub_result));
+    //     assert dev_sub_result == true;
 
-        // School publishes events to school.news
-        let event1 = {
-            namespace = "school.news";
-            source = school;
-            timestamp = 1;
-            data = #Text("Hackathon announced! Get ready for coding challenges and prizes!");
-            id = 1;
-            headers = null;
-            prevId = null;
-        };
-        let event2 = {
-            namespace = school_publications[1].namespace;
-            source = school;
-            timestamp = 1;
-            data = #Text("Hackathon registration is now open!");
-            id = 2;
-            headers = null;
-            prevId = null;
-        };
-        let handle_event1 = await Self.handleNewEvent(event1);
-        Debug.print("test_hackathon: handle_event1: " # Nat.toText(handle_event1[0].0));
-        let handle_event2 = await Self.handleNewEvent(event2);
-        Debug.print("test_hackathon: handle_event2: " # Nat.toText(handle_event2[0].0));
+    //     // School publishes events to school.news
+    //     let event1 = {
+    //         namespace = "school.news";
+    //         source = school;
+    //         timestamp = 1;
+    //         data = #Text("Hackathon announced! Get ready for coding challenges and prizes!");
+    //         id = 1;
+    //         headers = null;
+    //         prevId = null;
+    //     };
+    //     let event2 = {
+    //         namespace = school_publications[1].namespace;
+    //         source = school;
+    //         timestamp = 1;
+    //         data = #Text("Hackathon registration is now open!");
+    //         id = 2;
+    //         headers = null;
+    //         prevId = null;
+    //     };
+    //     let handle_event1 = await Self.handleNewEvent(event1);
+    //     Debug.print("test_hackathon: handle_event1: " # Nat.toText(handle_event1[0].0));
+    //     let handle_event2 = await Self.handleNewEvent(event2);
+    //     Debug.print("test_hackathon: handle_event2: " # Nat.toText(handle_event2[0].0));
 
-        // School registers subscription to school.hackathon
-        let school_sub_result2 = await Self.subscribe({
-            namespace = school_publications[1].namespace;
-            subscriber = school;
-            active = true;
-            filters = ["hackathon"];
-            messagesReceived = 0;
-            messagesRequested = 0;
-            messagesConfirmed = 0;
-        });
-        Debug.print("test_hackathon: school_sub_result2: " # Bool.toText(school_sub_result));
-        assert school_sub_result2 == true;
+    //     // School registers subscription to school.hackathon
+    //     let school_sub_result2 = await Self.subscribe({
+    //         namespace = school_publications[1].namespace;
+    //         subscriber = school;
+    //         active = true;
+    //         filters = ["hackathon"];
+    //         messagesReceived = 0;
+    //         messagesRequested = 0;
+    //         messagesConfirmed = 0;
+    //     });
+    //     Debug.print("test_hackathon: school_sub_result2: " # Bool.toText(school_sub_result));
+    //     assert school_sub_result2 == true;
 
-        // Dev registers publication to dev.hackathon
-        let dev_reg_pub_result = await pubManager.register_publications(dev, [{ namespace = "hackathon"; config = default_publication_config }]);
-        Debug.print("test_hackathon: dev_reg_pub_result: " # Bool.toText(dev_reg_pub_result[0].1) # " namespace " # dev_reg_pub_result[0].0);
-        let dev_sub_result2 = await Self.subscribe({
-            namespace = "hackathon";
-            subscriber = dev;
-            active = true;
-            filters = ["hackathon"];
-            messagesReceived = 0;
-            messagesRequested = 0;
-            messagesConfirmed = 0;
-        });
-        Debug.print("test_hackathon: dev_sub_result: " # Bool.toText(dev_sub_result2));
-        assert dev_sub_result2 == true;
+    //     // Dev registers publication to dev.hackathon
+    //     let dev_reg_pub_result = await pubManager.register_publications(dev, [{ namespace = "hackathon"; config = default_publication_config }]);
+    //     Debug.print("test_hackathon: dev_reg_pub_result: " # Bool.toText(dev_reg_pub_result[0].1) # " namespace " # dev_reg_pub_result[0].0);
+    //     let dev_sub_result2 = await Self.subscribe({
+    //         namespace = "hackathon";
+    //         subscriber = dev;
+    //         active = true;
+    //         filters = ["hackathon"];
+    //         messagesReceived = 0;
+    //         messagesRequested = 0;
+    //         messagesConfirmed = 0;
+    //     });
+    //     Debug.print("test_hackathon: dev_sub_result: " # Bool.toText(dev_sub_result2));
+    //     assert dev_sub_result2 == true;
 
-        // Dev publishes event to dev.hackathon
-        let event3 = {
-            namespace = "hackathon";
-            source = dev;
-            timestamp = 1;
-            data = #Text("I'm registering for the hackathon!");
-            id = 3;
-            headers = null;
-            prevId = null;
-        };
-        let event3_result = await Self.handleNewEvent(event3);
-        Debug.print("test_hackathon: event3_result: " # Nat.toText(event3_result[0].0));
-        assert event3_result[0].1 == true;
+    //     // Dev publishes event to dev.hackathon
+    //     let event3 = {
+    //         namespace = "hackathon";
+    //         source = dev;
+    //         timestamp = 1;
+    //         data = #Text("I'm registering for the hackathon!");
+    //         id = 3;
+    //         headers = null;
+    //         prevId = null;
+    //     };
+    //     let event3_result = await Self.handleNewEvent(event3);
+    //     Debug.print("test_hackathon: event3_result: " # Nat.toText(event3_result[0].0));
+    //     assert event3_result[0].1 == true;
 
-        // School publishes final event to school.news
-        let event4 = {
-            namespace = "hackathon";
-            source = school;
-            timestamp = 1;
-            data = #Text("Hackathon results are in! Congratulations to all participants.");
-            id = 4;
-            headers = null;
-            prevId = null;
-        };
-        let handle_event3 = await Self.handleNewEvent(event4);
-        Debug.print("test_hackathon: handle_event3: " # Nat.toText(handle_event3[0].0));
-        assert (handle_event3[0].1 == true);
-        // All assertions passed
-        return true;
-    };
+    //     // School publishes final event to school.news
+    //     let event4 = {
+    //         namespace = "hackathon";
+    //         source = school;
+    //         timestamp = 1;
+    //         data = #Text("Hackathon results are in! Congratulations to all participants.");
+    //         id = 4;
+    //         headers = null;
+    //         prevId = null;
+    //     };
+    //     let handle_event3 = await Self.handleNewEvent(event4);
+    //     Debug.print("test_hackathon: handle_event3: " # Nat.toText(handle_event3[0].0));
+    //     assert (handle_event3[0].1 == true);
+    //     // All assertions passed
+    //     return true;
+    // };
 
     //-----------------------------------------------------------------------------
     // Ethereum Event Sender

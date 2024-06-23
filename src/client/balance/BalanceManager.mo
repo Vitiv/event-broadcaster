@@ -1,5 +1,6 @@
 import HashMap "mo:base/HashMap";
 import Principal "mo:base/Principal";
+import Text "mo:base/Text";
 
 module {
     public class BalanceManager() = Self {
@@ -10,10 +11,28 @@ module {
             Principal.equal,
             Principal.hash,
         );
+        type Ledger = actor {
+            getBalance(UserId) : async Balance;
+        };
+
+        var balanceLedgerId = "2xdbt-dqaaa-aaaal-ajkja-cai";
+
+        public func initBalance(userId : UserId) : async () {
+            // TODO get from balance ledger
+            /*
+            let balanceLedger : Ledger = actor(balanceLedgerId);
+            let newBalance = await balanceLedger.getBalance(userId);
+            */
+            let newBalance = 10;
+            balances.put(userId, newBalance);
+        };
 
         public func getBalance(userId : UserId) : async Balance {
             switch (balances.get(userId)) {
-                case null return 0;
+                case null {
+                    await initBalance(userId);
+                    return 0;
+                };
                 case (?balance) return balance;
             };
         };
@@ -22,6 +41,11 @@ module {
             balances.put(userId, newBalance);
             await getBalance(userId);
             //emitBalanceUpdatedEvent(userId, newBalance);
+        };
+
+        public func setBalanceLedgerCanisterId(newBalanceLedgerId : Text) : async Bool {
+            balanceLedgerId := newBalanceLedgerId;
+            true;
         };
 
         // public func emitBalanceUpdatedEvent(userId : UserId, newBalance : Balance) {

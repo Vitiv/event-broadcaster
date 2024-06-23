@@ -12,9 +12,9 @@ module {
 
     public func requestCost(source : T.RpcService, jsonRequest : Text, maxResponseBytes : Nat64) : async Nat {
         let response = await Evm.requestCost(source, jsonRequest, maxResponseBytes);
-        let res = switch (response) {
-            case (#Ok(cost)) { cost };
-            case (#Err(_)) { 0 };
+        let res = switch (await Evm.requestCost(source, jsonRequest, maxResponseBytes)) {
+            case (#ok(cost)) { cost };
+            case (#err(_)) { 0 };
         };
         return res;
     };
