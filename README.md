@@ -4,13 +4,10 @@ This repository contains the implementation of the **Event Hub** in [Motoko](htt
 
 ## Summary:
 
-**Event Hub** is a [draft ICRC72](https://github.com/icdevs/ICEventsWG/blob/main/Meetings/20240515/icrc72draft.md) Motoko pub-sub pattern implementation for managing events, subscribers, and sending events to subscribers.
+**Event Hub** is a [draft ICRC72](https://github.com/icdevs/ICEventsWG/blob/main/Meetings/20240529/icrc72draft.md) Motoko pub-sub pattern implementation for managing events, subscribers, and sending events to subscribers.
 
 **Event Hub** also provides interoperability with Ethereum RPC methods.
  
-## Overview:
-![Event_Hub](https://github.com/ava-vs/event_hub/assets/30374212/e29abbbf-2d5f-4bdf-a981-4403f8aedbac)
-
 ## Features:
 - Subscriber Management: Functions for subscribing (subscribe) and unsubscribing (unsubscribe) to events.
 - Publication Managment: Register a new publication and publish events to subscribers.
@@ -19,7 +16,7 @@ This repository contains the implementation of the **Event Hub** in [Motoko](htt
 
 ## Usage
 
-Subscriptions and publications can be made through the Event Hub Client frontend ([example](https://mls5s-5qaaa-aaaal-qi6rq-cai.icp0.io)).
+Subscriptions and publications can be made and explored through the [Candid](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=rvrj4-pyaaa-aaaal-ajluq-cai).
 
 ## Dependencies
 This project depends on [evm_rpc canister](https://github.com/internet-computer-protocol/evm-rpc-canister).
@@ -28,7 +25,7 @@ This project depends on [evm_rpc canister](https://github.com/internet-computer-
 
 ### Mainnet
 ```bash
-cd event_client
+cd event_broadcaster
 dfx deploy --ic
 ```
 
