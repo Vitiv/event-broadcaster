@@ -26,6 +26,8 @@ module {
             await allowlist.initAllowlist(deployer);
         };
 
+        let default_publication_config = [("key", #Text("value"))];
+
         // func combineHashes(hash1 : Hash.Hash, hash2 : Hash.Hash) : Hash.Hash {
         //     return hash1 * 31 + hash2;
         // };
@@ -203,6 +205,12 @@ module {
         };
 
         public func publishEventToSubscribers(subscribers : [Types.Subscriber], event : Types.EventRelay) : async [Nat] {
+            // Register publication if necessary
+            let publication : Types.PublicationRegistration = {
+                namespace = event.namespace;
+                config = default_publication_config;
+            };
+            ignore await register_single_publication(event.source, publication);
             var result = Buffer.Buffer<Nat>(subscribers.size());
             // send event to all subscribers
             for (subscriber in subscribers.vals()) {
