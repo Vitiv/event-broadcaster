@@ -3,6 +3,7 @@ import Principal "mo:base/Principal";
 import Array "mo:base/Array";
 import Option "mo:base/Option";
 import Buffer "mo:base/Buffer";
+import Iter "mo:base/Iter";
 import Types "../ICRC72Types";
 import Utils "../Utils";
 
@@ -24,6 +25,12 @@ module {
          *   }
          */
         private var subscriptions : HashMap.HashMap<Principal, [Types.SubscriptionInfo]> = HashMap.HashMap<Principal, [Types.SubscriptionInfo]>(10, Principal.equal, Principal.hash);
+
+        public func initStore(store : [(Principal, [Types.SubscriptionInfo])]) {
+            for ((principal, subscription_list) in store.vals()) {
+                subscriptions.put(principal, subscription_list);
+            };
+        };
 
         public func icrc72_register_single_subscription(subscription : Types.SubscriptionInfo) : async Bool {
             var subscriber_list = subscriptions.get(subscription.subscriber);
@@ -97,6 +104,10 @@ module {
             Option.get(subscriptions.get(subscriber), []);
         };
 
+        public func getAllSubscriptions() : async [(Principal, [Types.SubscriptionInfo])] {
+            Iter.toArray(subscriptions.entries());
+        };
+
         // Get all subscriptions for all subscribers
         public func getSubscriptions() : async [Types.SubscriptionInfo] {
             let result = Buffer.Buffer<Types.SubscriptionInfo>(0);
@@ -109,30 +120,9 @@ module {
             return Buffer.toArray(result);
         };
 
-        // public func getSubscribersByFilter(filter : Types.EventFilter) : async [Principal] {
-        //     let result = Buffer.Buffer<Principal>(1);
-        //     label c for (subscriber in subscriptions.keys()) {
-        //         let subscriber_subscriptions = subscriptions.get(subscriber);
-        //         switch (subscriber_subscriptions) {
-        //             case (null) { continue c };
-        //             case (?subscriptions) {
-        //                 for (subscription in subscriptions.vals()) {
-        //                     let existFilter = Array.find<Types.EventFilter>(
-        //                         subscription.filters,
-        //                         func(f : Types.EventFilter) : Bool {
-        //                             f == filter;
-        //                         },
-        //                     );
-        //                     if (existFilter != null) {
-        //                         result.add(subscriber);
-        //                         break c;
-        //                     };
-        //                 };
-        //             };
-        //         };
-        //     };
-        //     return Buffer.toArray(result);
-        // };
+        public func getSubscriptionsSnapshot() : [(Principal, [Types.SubscriptionInfo])] {
+            Iter.toArray(subscriptions.entries());
+        };
 
         // Unsubscribe a subscriber from a specific namespace
         public func unsubscribeByNamespace(subscriber : Principal, namespace : Text) : async () {

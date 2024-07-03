@@ -4,6 +4,7 @@ import Result "mo:base/Result";
 import Hash "mo:base/Hash";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
+import Iter "mo:base/Iter";
 import T "../ICRC72Types";
 import SubscriptionManager "../subscriptions/SubscriptionManager";
 import BalanceManager "../balance/BalanceManager";
@@ -76,6 +77,12 @@ module {
             },
         );
 
+        public func initStore(store : [(Principal, T.Permission)]) {
+            for ((principal, permission) in store.vals()) {
+                allowList.put((principal, permission), null);
+            };
+        };
+
         // TODO Replace logic to checking $Event balance
         public func addToAllowList(user : Principal, permission : T.Permission) : async Result.Result<Bool, Text> {
             let balance = await balanceManager.getBalance(user);
@@ -101,6 +108,10 @@ module {
                     } else return false;
                 };
             };
+        };
+
+        public func getAllowList() : async [UserPermission] {
+            return Iter.toArray(allowList.keys());
         };
 
         public func test() : async (Bool, Bool) {

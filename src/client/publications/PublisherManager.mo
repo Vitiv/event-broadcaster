@@ -47,6 +47,11 @@ module {
 
         private var events = HashMap.HashMap<Principal, [Types.EventRelay]>(10, Principal.equal, Principal.hash);
 
+        public func initStore(store : [(Principal, [Types.PublicationInfo])]) {
+            for ((principal, pub_list) in store.vals()) {
+                publications.put(principal, pub_list);
+            };
+        };
         // Check allowList
 
         private func isUserInAllowList(user : Principal, permission : Types.Permission) : async Bool {
@@ -143,6 +148,10 @@ module {
 
         public func getPublishers() : async [Principal] {
             Iter.toArray(publications.keys());
+        };
+
+        public func getAllPublications() : async [(Principal, [Types.PublicationInfo])] {
+            Iter.toArray(publications.entries());
         };
 
         public func getPublicationsByNamespace(publisher : Principal, namespace : Namespace) : async ?Types.PublicationInfo {

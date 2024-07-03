@@ -11,7 +11,7 @@
       "type": "custom",
       "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz"
     },
-    "client": {
+    "broadcaster": {
       "declarations": {
         "node_compatibility": true
       },
@@ -24,7 +24,7 @@
     },
     "frontend": {
       "dependencies": [
-        "client"
+        "broadcaster"
       ],
       "source": [
         "src/frontend/dist"

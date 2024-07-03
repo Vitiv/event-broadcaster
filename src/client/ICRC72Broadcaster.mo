@@ -179,24 +179,45 @@ actor class ICRC72Broadcaster() = Self {
 
     public shared func handleNewEvent(event : Types.EventRelay) : async [(Nat, Bool)] {
         let result_buffer = Buffer.Buffer<(Nat, Bool)>(0);
-        let eventFilters = [event.namespace]; //parseNamespace(event.namespace);
-        if (eventFilters.size() == 0) {
+
+        // Get all subscriptions for this event
+        let subscriptions = await subManager.getSubscriptionsByNamespace(event.namespace);
+
+        if (subscriptions.size() == 0) {
             return [(0, false)];
         };
-        // Get subscribers by filter
-        for (filter in eventFilters.vals()) {
-            let _principals = await subManager.getSubscribersByNamespace(filter);
-            if (_principals.size() == 0) {
-                return [(0, false)];
+
+        for (subscription in subscriptions.vals()) {
+            if (subscription.active) {
+                let matchesFilter = checkFilters(event.namespace, subscription.filters);
+
+                if (matchesFilter) {
+                    let subscriber : Types.Subscriber = {
+                        subscriber = subscription.subscriber;
+                        filter = subscription.filters;
+                    };
+
+                    //Publish event
+                    let publish_result = await pubManager.publishEventToSubscribers([subscriber], event);
+                    result_buffer.add(event.id, publish_result.size() > 0);
+
+                    // Stats
+                    // ignore await increasePublicationMessagesSentStats(event.source, event.namespace, "messagesSent");
+                };
             };
-            // Convert Principals to Subscribers
-            let _subscribers = Array.map<Principal, Types.Subscriber>(_principals, func(p : Principal) : Types.Subscriber { { subscriber = p; filter = eventFilters } });
-            // send event to subscribers
-            let publish_result = await pubManager.publishEventToSubscribers(_subscribers, event);
-            result_buffer.add(event.id, publish_result.size() > 0);
-            // ignore await increasePublicationMessagesSentStats(event.source, event.namespace, "messagesSent");
         };
+
         Buffer.toArray(result_buffer);
+    };
+
+    func checkFilters(namespace : Text, filters : [Text]) : Bool {
+        // TODO Add support for dot-split namespace and filter matching
+        for (filter in filters.vals()) {
+            if (Text.equal(namespace, filter)) {
+                return true;
+            };
+        };
+        false;
     };
 
     public func icrc72_publish(events : [Types.EventRelay]) : async [{
@@ -268,6 +289,10 @@ actor class ICRC72Broadcaster() = Self {
 
     public shared func subscribe(subscription : Types.SubscriptionInfo) : async Bool {
         await subManager.icrc72_register_single_subscription(subscription);
+    };
+
+    public shared func icrc72_register_subscription(subscription : [Types.SubscriptionInfo]) : async [(Types.SubscriptionInfo, Bool)] {
+        await subManager.icrc72_register_subscription(subscription);
     };
 
     // TODO: add allowlist for getting subscribers by namespace
@@ -464,8 +489,46 @@ actor class ICRC72Broadcaster() = Self {
         ignore await balanceManager.updateBalance(user, balance);
         #ok(await balanceManager.getBalance(user));
     };
-    //---------------------------------------------------------------------------
+    //-----------------------------------------------------------------------------
+    // Stable Upgrade Canister Part
 
+    stable var messagesStore : [(Principal, [Types.EventNotification])] = [];
+    stable var subscriptionStore : [(Principal, [Types.SubscriptionInfo])] = [];
+    stable var publicationStore : [(Principal, [Types.PublicationInfo])] = [];
+    stable var allowlistStore : [(Principal, Types.Permission)] = [];
+
+    // func getSubcriptionsState() : [(Principal, [Types.SubscriptionInfo])] {
+    //     await subManager.getAllSubscriptions();
+    // };
+
+    system func preupgrade() {
+        messagesStore := Iter.toArray(messagesMap.entries());
+        // TODO add local copy of subscriptionStore, publicationStore, allowlistStore
+        // subscriptionStore := getSubcriptionsState();
+        // publicationStore := await pubManager.getAllPublications();
+        // allowlistStore := await allowlist.getAllowlist();
+
+        // TODO other stats (events, etc)
+    };
+
+    system func postupgrade() {
+        for (entry in messagesStore.vals()) {
+            messagesMap.put(entry.0, entry.1);
+        };
+        messagesStore := [];
+
+        // subManager.initStore(subscriptionStore);
+        // subscriptionStore := [];
+
+        // pubManager.initStore(publicationStore);
+        // publicationStore := [];
+
+        // allowlist.initStore(allowlistStore);
+        // allowlistStore := [];
+        // TODO other states
+    };
+
+    //-----------------------------------------------------------------------------
     // Registers a publication for a subscriber in the specified namespace.
     //
     // Arguments:
