@@ -26,90 +26,14 @@ import Utils "Utils";
 
 actor class ICRC72Broadcaster() = Self {
 
-    type EventRelay = {
-        id : Nat;
-        prevId : ?Nat;
-        timestamp : Nat;
-        namespace : Text;
-        source : Principal;
-        data : ICRC16;
-        headers : ?ICRC16Map;
-    };
-
-    type EventNotification = {
-        id : Nat;
-        eventId : Nat;
-        preEventId : ?Nat;
-        timestamp : Nat;
-        namespace : Text;
-        data : ICRC16;
-        source : Principal;
-        headers : ?ICRC16Map;
-        filter : ?Text;
-    };
-
-    type ICRC16Property = {
-        name : Text;
-        value : ICRC16;
-        immutable : Bool;
-    };
-
-    public type ICRC16 = {
-        #Array : [ICRC16];
-        #Blob : Blob;
-        #Bool : Bool;
-        #Bytes : [Nat8];
-        #Class : [ICRC16Property];
-        #Float : Float;
-        #Floats : [Float];
-        #Int : Int;
-        #Int16 : Int16;
-        #Int32 : Int32;
-        #Int64 : Int64;
-        #Int8 : Int8;
-        #Map : [(Text, ICRC16)];
-        #ValueMap : [(ICRC16, ICRC16)];
-        #Nat : Nat;
-        #Nat16 : Nat16;
-        #Nat32 : Nat32;
-        #Nat64 : Nat64;
-        #Nat8 : Nat8;
-        #Nats : [Nat];
-        #Option : ?ICRC16;
-        #Principal : Principal;
-        #Set : [ICRC16];
-        #Text : Text;
-    };
-
-    type ICRC16Map = (Text, ICRC16);
-
-    // ICRC3
-    type Value = {
-        #Nat : Nat;
-        #Nat8 : Nat8;
-        #Int : Int;
-        #Text : Text;
-        #Blob : Blob;
-        #Bool : Bool;
-        #Array : [Value];
-        #Map : [(Text, Value)];
-    };
-
-    private var receivedMessages : [Types.EventNotification] = [];
     // recieved messages by source
-    private var messagesMap = HashMap.HashMap<Principal, [Types.EventNotification]>(10, Principal.equal, Principal.hash);
-
-    type SubscriptionInfo = {
-        subscriber : Principal;
-        namespace : Text;
-        config : [ICRC16Map];
-        stats : [ICRC16Map];
-    };
+    type Source = Principal;
+    private var messagesMap = HashMap.HashMap<Source, [Types.EventNotification]>(10, Principal.equal, Principal.hash);
 
     type SubscriberActor = actor {
-        icrc72_handle_notification([EventNotification]) : async ();
-        icrc72_handle_notification_trusted([EventNotification]) : async [{
-            #Ok : Value;
+        icrc72_handle_notification([Types.EventNotification]) : async ();
+        icrc72_handle_notification_trusted([Types.EventNotification]) : async [{
+            #Ok : Types.Value;
             #Err : Text;
         }];
     };
@@ -120,7 +44,9 @@ actor class ICRC72Broadcaster() = Self {
 
     private let subManager = SubscriptionManager.SubscriptionManager();
     private let pubManager = Publisher.PublisherManager();
+    // TODO
     private let allowlist = AllowListManager.AllowListManager();
+    // For DAO token support
     private let balanceManager = BalanceManager.BalanceManager();
 
     // init allowlist on startup
@@ -202,7 +128,6 @@ actor class ICRC72Broadcaster() = Self {
                     result_buffer.add(event.id, publish_result.size() > 0);
 
                     // Stats
-                    // ignore await increasePublicationMessagesSentStats(event.source, event.namespace, "messagesSent");
                 };
             };
         };
@@ -249,11 +174,6 @@ actor class ICRC72Broadcaster() = Self {
             Err = Buffer.toArray(error_buffer);
         }];
     };
-
-    // key = "messagesSent"
-    // func increasePublicationMessagesSentStats(publisher : Principal, namespace : Text, key : Text) : async Nat {
-    //     await pubManager.increasePublicationMessagesSentStats(publisher, namespace, key);
-    // };
 
     func parseNamespace(namespace : Text) : [Text] {
         let delimiter = #char '.';
@@ -326,13 +246,7 @@ actor class ICRC72Broadcaster() = Self {
         );
     };
 
-    // public func notify_subscribers(event : EventRelay) : async Result.Result<Bool, Text> {
-    //     // Send notification to all subscribers
-    //     Debug.print("notify_subscribers: event: " # Nat.toText(event.id) # " " # event.namespace);
-    //     #ok true;
-    // };
-
-    func textToICRC16(text : Text) : ICRC16 {
+    func textToICRC16(text : Text) : Types.ICRC16 {
         #Text(text);
     };
 
@@ -351,9 +265,6 @@ actor class ICRC72Broadcaster() = Self {
     // // Subscription handling
 
     public func icrc72_handle_notification(messages : [Types.EventNotification]) : async () {
-        // Debug.print("Handling message with icrc72_handle_notification, messages size: " # Nat.toText(messages.size()));
-        // Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source) # " namespace: " # messages[0].namespace);
-        // receivedMessages := Utils.appendArray<Types.EventNotification>(receivedMessages, messages);
         for (message in messages.vals()) {
             // eventHubBalance namespace handling
             if (message.namespace == eventHubBalance) {
@@ -401,9 +312,6 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     public func icrc72_handle_notification_trusted(messages : [Types.EventNotification]) : async [Result.Result<Bool, Text>] {
-        // Debug.print("Handling message with icrc72_handle_notification_trusted, messages size: " # Nat.toText(messages.size()));
-        // Debug.print("Handling message, first message from: " # Principal.toText(messages[0].source));
-        // receivedMessages := Utils.appendArray(receivedMessages, messages);
         for (message in messages.vals()) {
             let existingMessage = messagesMap.get(message.source);
             switch (existingMessage) {
@@ -484,7 +392,7 @@ actor class ICRC72Broadcaster() = Self {
 
     // ----------------------------------------------------------------------------
     // Balance
-
+    // For DAO token balance management
     private func updateBalance(user : Principal, balance : Nat) : async Result.Result<Nat, Text> {
         ignore await balanceManager.updateBalance(user, balance);
         #ok(await balanceManager.getBalance(user));
@@ -493,13 +401,10 @@ actor class ICRC72Broadcaster() = Self {
     // Stable Upgrade Canister Part
 
     stable var messagesStore : [(Principal, [Types.EventNotification])] = [];
-    stable var subscriptionStore : [(Principal, [Types.SubscriptionInfo])] = [];
-    stable var publicationStore : [(Principal, [Types.PublicationInfo])] = [];
-    stable var allowlistStore : [(Principal, Types.Permission)] = [];
-
-    // func getSubcriptionsState() : [(Principal, [Types.SubscriptionInfo])] {
-    //     await subManager.getAllSubscriptions();
-    // };
+    // TODO add local copy of subscriptionStore, publicationStore, allowlistStore
+    // stable var subscriptionStore : [(Principal, [Types.SubscriptionInfo])] = [];
+    // stable var publicationStore : [(Principal, [Types.PublicationInfo])] = [];
+    // stable var allowlistStore : [(Principal, Types.Permission)] = [];
 
     system func preupgrade() {
         messagesStore := Iter.toArray(messagesMap.entries());
@@ -803,85 +708,85 @@ actor class ICRC72Broadcaster() = Self {
     //     };
     // };
 
-    // public func requestCost(source : T.RpcService, jsonRequest : Text, maxResponseBytes : Nat) : async Nat {
-    //     await EthSender.requestCost(source, jsonRequest, Nat64.fromNat(maxResponseBytes));
-    // };
+    public func requestCost(source : T.RpcService, jsonRequest : Text, maxResponseBytes : Nat) : async Nat {
+        await EthSender.requestCost(source, jsonRequest, Nat64.fromNat(maxResponseBytes));
+    };
 
-    // public func getEthLogs(source_text : Text, provider : Text, config_text : Nat, addresses : [Text], blockTagFrom : Text, fromBlock : Nat, blockTagTo : Text, toBlock : Nat, topics : [Text], cycles : Nat) : async () {
-    //     let source = parseRpcSource(source_text, provider);
-    //     let config = parseRpcConfig(config_text);
-    //     let getLogArgs = parseGetLogsArgs(addresses, blockTagFrom, fromBlock, blockTagTo, toBlock, topics);
-    //     Debug.print("getEthLogs: source: " # source_text # " , provider: " # provider # " , config: " # Nat.toText(config_text) # " , addresses: " # addresses[0] # " , blockTag: " # blockTagFrom # " , fromBlock: " # Nat.toText(fromBlock) # " , toBlock: " # Nat.toText(toBlock) # " , topics: " # topics[0]);
-    //     // TODO result handling
-    //     let result = await EthSender.eth_getLogs(source, config, getLogArgs, cycles);
-    //     switch (result) {
-    //         case (#Consistent(_)) {
-    //             Debug.print("getEthLogs: Consistent");
-    //         };
-    //         case (_) {
-    //             Debug.print("getEthLogs: Inconsistent");
-    //         };
-    //     };
+    public func getEthLogs(source_text : Text, provider : Text, config_text : Nat, addresses : [Text], blockTagFrom : Text, fromBlock : Nat, blockTagTo : Text, toBlock : Nat, topics : [Text], cycles : Nat) : async () {
+        let source = parseRpcSource(source_text, provider);
+        let config = parseRpcConfig(config_text);
+        let getLogArgs = parseGetLogsArgs(addresses, blockTagFrom, fromBlock, blockTagTo, toBlock, topics);
+        Debug.print("getEthLogs: source: " # source_text # " , provider: " # provider # " , config: " # Nat.toText(config_text) # " , addresses: " # addresses[0] # " , blockTag: " # blockTagFrom # " , fromBlock: " # Nat.toText(fromBlock) # " , toBlock: " # Nat.toText(toBlock) # " , topics: " # topics[0]);
+        // TODO result handling
+        let result = await EthSender.eth_getLogs(source, config, getLogArgs, cycles);
+        switch (result) {
+            case (#Consistent(_)) {
+                Debug.print("getEthLogs: Consistent");
+            };
+            case (_) {
+                Debug.print("getEthLogs: Inconsistent");
+            };
+        };
 
-    //     return;
-    // };
+        return;
+    };
 
-    // func parseRpcSource(source_text : Text, provider : Text) : T.RpcSources {
-    //     if (source_text == "Sepolia") {
-    //         return #EthSepolia(?[parseEthSepoliaService(provider)]);
-    //     } else if (source_text == "Mainnet") {
-    //         return #EthMainnet(?[parseEthMainnetService(provider)]);
-    //     } else {
-    //         return #EthSepolia(?[#Alchemy]);
-    //     };
+    func parseRpcSource(source_text : Text, provider : Text) : T.RpcSources {
+        if (source_text == "Sepolia") {
+            return #EthSepolia(?[parseEthSepoliaService(provider)]);
+        } else if (source_text == "Mainnet") {
+            return #EthMainnet(?[parseEthMainnetService(provider)]);
+        } else {
+            return #EthSepolia(?[#Alchemy]);
+        };
 
-    // };
+    };
 
-    // func parseRpcConfig(config : Nat) : ?T.RpcConfig {
-    //     ?{ responseSizeEstimate = ?Nat64.fromNat(config) };
-    // };
+    func parseRpcConfig(config : Nat) : ?T.RpcConfig {
+        ?{ responseSizeEstimate = ?Nat64.fromNat(config) };
+    };
 
-    // func parseGetLogsArgs(addresses : [Text], blockTagFrom : Text, fromBlock : Nat, blockTagTo : Text, toBlock : Nat, topics : [Text]) : T.GetLogsArgs {
-    //     {
-    //         addresses = addresses;
-    //         fromBlock = parseBlockTag(blockTagFrom, fromBlock);
-    //         toBlock = parseBlockTag(blockTagTo, toBlock);
-    //         topics = ?[topics];
-    //     };
-    // };
+    func parseGetLogsArgs(addresses : [Text], blockTagFrom : Text, fromBlock : Nat, blockTagTo : Text, toBlock : Nat, topics : [Text]) : T.GetLogsArgs {
+        {
+            addresses = addresses;
+            fromBlock = parseBlockTag(blockTagFrom, fromBlock);
+            toBlock = parseBlockTag(blockTagTo, toBlock);
+            topics = ?[topics];
+        };
+    };
 
-    // func parseBlockTag(blockTag : Text, number : Nat) : ?T.BlockTag {
-    //     switch (blockTag) {
-    //         case ("Earliest") { return ? #Earliest };
-    //         case ("Safe") { return ? #Safe };
-    //         case ("Finalized") { return ? #Finalized };
-    //         case ("Latest") { return ? #Latest };
-    //         case ("Pending") { return ? #Pending };
-    //         case ("Number") {
-    //             return ? #Number(number);
-    //         };
-    //         case (_) { return null };
-    //     };
-    // };
+    func parseBlockTag(blockTag : Text, number : Nat) : ?T.BlockTag {
+        switch (blockTag) {
+            case ("Earliest") { return ? #Earliest };
+            case ("Safe") { return ? #Safe };
+            case ("Finalized") { return ? #Finalized };
+            case ("Latest") { return ? #Latest };
+            case ("Pending") { return ? #Pending };
+            case ("Number") {
+                return ? #Number(number);
+            };
+            case (_) { return null };
+        };
+    };
 
-    // func parseEthSepoliaService(service : Text) : T.EthSepoliaService {
-    //     switch (service) {
-    //         case ("Alchemy") { return #Alchemy };
-    //         case ("BlockPi") { return #BlockPi };
-    //         case ("PublicNode") { return #PublicNode };
-    //         case ("Ankr") { return #Ankr };
-    //         case (_) { return #Alchemy };
-    //     };
-    // };
+    func parseEthSepoliaService(service : Text) : T.EthSepoliaService {
+        switch (service) {
+            case ("Alchemy") { return #Alchemy };
+            case ("BlockPi") { return #BlockPi };
+            case ("PublicNode") { return #PublicNode };
+            case ("Ankr") { return #Ankr };
+            case (_) { return #Alchemy };
+        };
+    };
 
-    // func parseEthMainnetService(service : Text) : T.EthMainnetService {
-    //     switch (service) {
-    //         case ("Alchemy") { return #Alchemy };
-    //         case ("BlockPi") { return #BlockPi };
-    //         case ("Cloudflare") { return #Cloudflare };
-    //         case ("PublicNode") { return #PublicNode };
-    //         case ("Ankr") { return #Ankr };
-    //         case (_) { return #Alchemy };
-    //     };
-    // };
+    func parseEthMainnetService(service : Text) : T.EthMainnetService {
+        switch (service) {
+            case ("Alchemy") { return #Alchemy };
+            case ("BlockPi") { return #BlockPi };
+            case ("Cloudflare") { return #Cloudflare };
+            case ("PublicNode") { return #PublicNode };
+            case ("Ankr") { return #Ankr };
+            case (_) { return #Alchemy };
+        };
+    };
 };
