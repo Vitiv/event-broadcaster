@@ -176,6 +176,15 @@ module {
         return bufferToBlob(buffer);
     };
 
+    public func getValueByKey(map : [(Text, T.ICRC16)], key : Text) : ?T.ICRC16 {
+        for ((k, v) in map.vals()) {
+            if (k == key) {
+                return ?v;
+            };
+        };
+        return null;
+    };
+
     func blobFromValue(value : T.Value) : Blob {
         switch (value) {
             case (#Nat(n)) {

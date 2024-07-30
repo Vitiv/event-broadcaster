@@ -49,6 +49,8 @@ module {
 
     public type Map = [(Text, ICRC16)];
 
+    public type ICRC16ValueMap = { key : ICRC16; value : ICRC16 };
+
     public type PublisherInfo = {
         publisher : Principal; // The principal ID of the publisher canister
         publicationCount : Nat; // Total number of publications made by this publisher
@@ -163,7 +165,7 @@ module {
         #Err : Text;
     };
 
-    public type EventRelay = {
+    public type Event = {
         id : Nat;
         prevId : ?Nat;
         timestamp : Nat;

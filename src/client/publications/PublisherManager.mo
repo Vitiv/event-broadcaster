@@ -47,7 +47,7 @@ module {
 
         private var notifications = HashMap.HashMap<Principal, [EventNotificationId]>(10, Principal.equal, Principal.hash);
 
-        private var events = HashMap.HashMap<Principal, [Types.EventRelay]>(10, Principal.equal, Principal.hash);
+        private var events = HashMap.HashMap<Principal, [Types.Event]>(10, Principal.equal, Principal.hash);
 
         public func initStore(store : [(Principal, [Types.PublicationInfo])]) {
             for ((principal, pub_list) in store.vals()) {
@@ -177,7 +177,7 @@ module {
         };
 
         // Method to publish an event to all subscribers
-        public func publishEventWithResponse(subscribers : [Types.Subscriber], event : Types.EventRelay) : async [(Principal, Types.Response)] {
+        public func publishEventWithResponse(subscribers : [Types.Subscriber], event : Types.Event) : async [(Principal, Types.Response)] {
             let buffer = Buffer.Buffer<(Principal, Types.Response)>(0);
             for (subscriber in subscribers.vals()) {
                 let subscriber_actor : Types.SubscriberActor = actor (Principal.toText(subscriber.subscriber));
@@ -204,7 +204,7 @@ module {
             return Buffer.toArray(buffer);
         };
 
-        public func publishEventToSubscribers(subscribers : [Types.Subscriber], event : Types.EventRelay) : async [Nat] {
+        public func publishEventToSubscribers(subscribers : [Types.Subscriber], event : Types.Event) : async [Nat] {
             // Register publication if necessary
             let publication : Types.PublicationRegistration = {
                 namespace = event.namespace;
@@ -238,14 +238,14 @@ module {
             Buffer.toArray(result);
         };
 
-        private func saveEvent(event : Types.EventRelay) {
+        private func saveEvent(event : Types.Event) {
             let exist_events = events.get(event.source);
             switch (exist_events) {
                 case (null) {
                     events.put(event.source, [event]);
                 };
                 case (?_exist) {
-                    let new_events = Utils.pushIntoArray<Types.EventRelay>(event, _exist);
+                    let new_events = Utils.pushIntoArray<Types.Event>(event, _exist);
                     events.put(event.source, new_events);
                 };
             };
