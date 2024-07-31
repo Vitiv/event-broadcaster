@@ -42,18 +42,18 @@ module {
         //     Principal.equal(id1.0, id2.0) and Text.equal(id1.1, id2.1);
         // };
 
-        private var publications = HashMap.HashMap<Principal, [Types.PublicationInfo]>(10, Principal.equal, Principal.hash);
+        public var publications = HashMap.HashMap<Principal, [Types.PublicationInfo]>(10, Principal.equal, Principal.hash);
         // private var publicationStats = HashMap.HashMap<PublicationId, HashMap.HashMap<Text, Types.ICRC16>>(10, eqPublicationId, hashPublicationId);
 
-        private var notifications = HashMap.HashMap<Principal, [EventNotificationId]>(10, Principal.equal, Principal.hash);
+        public var notifications = HashMap.HashMap<Principal, [EventNotificationId]>(10, Principal.equal, Principal.hash);
 
-        private var events = HashMap.HashMap<Principal, [Types.Event]>(10, Principal.equal, Principal.hash);
+        public var events = HashMap.HashMap<Principal, [Types.Event]>(10, Principal.equal, Principal.hash);
 
-        public func initStore(store : [(Principal, [Types.PublicationInfo])]) {
-            for ((principal, pub_list) in store.vals()) {
-                publications.put(principal, pub_list);
-            };
-        };
+        // public func initStore(store : [(Principal, [Types.PublicationInfo])]) {
+        //     for ((principal, pub_list) in store.vals()) {
+        //         publications.put(principal, pub_list);
+        //     };
+        // };
         // Check allowList
 
         private func isUserInAllowList(user : Principal, permission : Types.Permission) : async Bool {

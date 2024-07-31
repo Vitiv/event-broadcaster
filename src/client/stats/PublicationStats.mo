@@ -37,9 +37,9 @@ module {
     };
 
     public class PublicationStats() {
-        private let stats = HashMap.HashMap<PublicationID, StatFields>(10, Nat.equal, Hash.hash);
-        private let sources = HashMap.HashMap<PublicationID, HashMap.HashMap<Text, Bool>>(10, Nat.equal, Hash.hash);
-        private let responses = HashMap.HashMap<PublicationID, ResponsesStats>(10, Nat.equal, Hash.hash);
+        public var stats = HashMap.HashMap<PublicationID, StatFields>(10, Nat.equal, Hash.hash);
+        public var sources = HashMap.HashMap<PublicationID, HashMap.HashMap<Text, Bool>>(10, Nat.equal, Hash.hash);
+        public var responses = HashMap.HashMap<PublicationID, ResponsesStats>(10, Nat.equal, Hash.hash);
 
         public func registerPublication(id : PublicationID, registration : { namespace : Text }) : async Result.Result<Nat, Text> {
             switch (stats.get(id)) {

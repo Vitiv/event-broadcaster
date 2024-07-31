@@ -15,7 +15,7 @@ module {
 
         type UserPermission = (Principal, T.Permission);
 
-        var _deployer = Principal.fromText("aaaaa-aa");
+        var _deployer = Principal.fromText("bs3e6-4i343-voosn-wogd7-6kbdg-mctak-hn3ws-k7q7f-fye2e-uqeyh-yae");
         var _initialized = false;
 
         let balanceManager = BalanceManager.BalanceManager();
@@ -23,8 +23,14 @@ module {
         public func initAllowlist(deployer : Principal) : async () {
             let initResult = await setDeployer(deployer);
             switch (initResult) {
-                case (#ok(t)) {};
-                case (#err(e)) { Debug.print("Failed to initialize allowlist") };
+                case (#ok(_)) {
+                    // Add deployer to the allow list with Admin permission
+                    allowList.put((deployer, #Admin), null);
+                    Debug.print("Deployer added to allow list: " # Principal.toText(deployer));
+                };
+                case (#err(e)) {
+                    Debug.print("Failed to initialize allowlist: " # e);
+                };
             };
             // create subscription to get $EVENT balance updates
             let subManager = SubscriptionManager.SubscriptionManager();
@@ -42,9 +48,7 @@ module {
                 Debug.print("Failed to create subscription");
             };
 
-            // On $EVENT balance updates, add user to allowlist
-
-            Debug.print("Initialized allowlist successfully");
+            Debug.print("AllowListManager: Initialized allowlist successfully");
         };
 
         private func setDeployer(deployer : Principal) : async Result.Result<Text, Text> {
@@ -53,15 +57,16 @@ module {
                 _initialized := true;
                 return #ok("Deployer set to " # Principal.toText(deployer));
             } else {
-                if (Principal.equal(deployer, _deployer)) {
+                if (not Principal.equal(deployer, _deployer)) {
                     _deployer := deployer;
+                    Debug.print("Deployer changed to " # Principal.toText(deployer));
                     return #ok("Deployer set to " # Principal.toText(deployer));
                 };
             };
             #err("Do not allow change of deployer");
         };
 
-        private var allowList : Set<UserPermission> = HashMap.HashMap<UserPermission, Null>(
+        public var allowList : Set<UserPermission> = HashMap.HashMap<UserPermission, Null>(
             10,
             func(x : UserPermission, y : UserPermission) : Bool {
                 return x == y; // Compare both Principal and Permission
@@ -77,23 +82,23 @@ module {
             },
         );
 
-        public func initStore(store : [(Principal, T.Permission)]) {
-            for ((principal, permission) in store.vals()) {
-                allowList.put((principal, permission), null);
-            };
-        };
+        // public func initStore(store : [(Principal, T.Permission)]) {
+        //     for ((principal, permission) in store.vals()) {
+        //         allowList.put((principal, permission), null);
+        //     };
+        // };
 
         // TODO Replace logic to checking $Event balance
-        public func addToAllowList(user : Principal, permission : T.Permission) : async Result.Result<Bool, Text> {
-            let balance = await balanceManager.getBalance(user);
-
-            if (Principal.equal(user, _deployer) and balance > 0) {
-                allowList.put((user, permission), null);
+        public func addToAllowList(caller : Principal, user : Text, permission : T.Permission) : async Result.Result<Bool, Text> {
+            Debug.print("AllowListManager.addToAllowList AllowList: " # debug_show (await getAllowList()));
+            let isAdmin = await isUserInAllowList(caller, #Admin);
+            if (isAdmin) {
+                allowList.put((Principal.fromText(user), permission), null);
+                Debug.print("AllowListManager.addToAllowList User added to allow list: " # user);
+                Debug.print("AllowListManager.addToAllowList AllowList: " # debug_show (await getAllowList()));
                 return #ok true;
-            } else if (balance > 0) {
-                return #err("User balance is insufficient: " # Nat.toText(balance));
             } else {
-                return #err "Not authorized";
+                return #err("Only admins allowed");
             };
         };
 
@@ -101,7 +106,8 @@ module {
             switch (allowList.get((user, permission))) {
                 case (?_) true;
                 case null {
-                    let balance = await balanceManager.getBalance(user);
+                    let balance = await balanceManager.getBalance(Principal.toText(user));
+                    Debug.print("AllowListManager.isUserInAllowList balance: " # debug_show (balance));
                     if (balance > 0) {
                         allowList.put((user, permission), null);
                         return true;

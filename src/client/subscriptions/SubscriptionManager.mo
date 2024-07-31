@@ -24,13 +24,13 @@ module {
          *   config : Map;
          *   }
          */
-        private var subscriptions : HashMap.HashMap<Principal, [Types.SubscriptionInfo]> = HashMap.HashMap<Principal, [Types.SubscriptionInfo]>(10, Principal.equal, Principal.hash);
+        public var subscriptions : HashMap.HashMap<Principal, [Types.SubscriptionInfo]> = HashMap.HashMap<Principal, [Types.SubscriptionInfo]>(10, Principal.equal, Principal.hash);
 
-        public func initStore(store : [(Principal, [Types.SubscriptionInfo])]) {
-            for ((principal, subscription_list) in store.vals()) {
-                subscriptions.put(principal, subscription_list);
-            };
-        };
+        // public func initStore(store : [(Principal, [Types.SubscriptionInfo])]) {
+        //     for ((principal, subscription_list) in store.vals()) {
+        //         subscriptions.put(principal, subscription_list);
+        //     };
+        // };
 
         public func icrc72_register_single_subscription(subscription : Types.SubscriptionInfo) : async Bool {
             var subscriber_list = subscriptions.get(subscription.subscriber);

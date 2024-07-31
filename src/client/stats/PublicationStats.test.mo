@@ -27,7 +27,7 @@ actor {
     };
 
     func getAll(id: Nat) : async ?[(Text, Nat)] {
-        stats.getAll(id)
+        ?stats.getAll(id)
     };
 
     // Tests

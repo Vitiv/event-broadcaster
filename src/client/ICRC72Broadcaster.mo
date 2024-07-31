@@ -44,6 +44,7 @@ actor class ICRC72Broadcaster() = Self {
     let default_publication_config = [("key", #Text("value"))];
 
     var eventHubBalance = "event.hub.balance";
+    let dao_canister = "k5yym-uqaaa-aaaal-ajoyq-cai";
 
     private let subManager = SubscriptionManager.SubscriptionManager();
     private let pubManager = Publisher.PublisherManager();
@@ -71,12 +72,12 @@ actor class ICRC72Broadcaster() = Self {
         };
     };
 
-    public shared (msg) func setBalanceLedgerCanisterId(ledgerCanisterId : Text) : async Bool {
-        if (Principal.isController(msg.caller)) {
-            return await balanceManager.setBalanceLedgerCanisterId(ledgerCanisterId);
-        };
-        false;
-    };
+    // public shared (msg) func setBalanceLedgerCanisterId(ledgerCanisterId : Text) : async Bool {
+    //     if (Principal.isController(msg.caller)) {
+    //         return await balanceManager.setBalanceLedgerCanisterId(ledgerCanisterId);
+    //     };
+    //     false;
+    // };
 
     // Create event part
 
@@ -113,6 +114,8 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     public shared func handleNewEvent(event : Types.Event) : async [(Nat, Bool)] {
+        // TODO check authorized
+
         let result_buffer = Buffer.Buffer<(Nat, Bool)>(0);
 
         // Get all subscriptions for this event
@@ -132,12 +135,22 @@ actor class ICRC72Broadcaster() = Self {
                         filter = subscription.filters;
                     };
 
+                    // Decrease balance
+                    var publisher_balance = Option.get(balanceManager.balances.get(Principal.toText(event.source)), 0);
+                    if (publisher_balance > 0) {
+                        balanceManager.balances.put(Principal.toText(event.source), publisher_balance - 1);
+                    } else {
+                        // insufficient balance
+                        return [(0, false)];
+                    };
+
                     //Publish event
                     let publish_result = await pubManager.publishEventToSubscribers([subscriber], event);
                     result_buffer.add(event.id, publish_result.size() > 0);
 
                     // Stats
                     publicationStats.updateStats(event, subscription, publish_result[0]);
+
                 };
             };
         };
@@ -276,8 +289,8 @@ actor class ICRC72Broadcaster() = Self {
 
     public func icrc72_handle_notification(messages : [Types.EventNotification]) : async () {
         for (message in messages.vals()) {
-            // eventHubBalance namespace handling
-            if (message.namespace == eventHubBalance) {
+            // DAOBalance namespace handling
+            if (message.source == Principal.fromText(dao_canister) and message.namespace == eventHubBalance) {
                 switch (message.data) {
                     case (#Map(data)) {
                         var newBalance : ?Nat = null;
@@ -404,25 +417,30 @@ actor class ICRC72Broadcaster() = Self {
     // Balance
     // For DAO token balance management
     private func updateBalance(user : Principal, balance : Nat) : async Result.Result<Nat, Text> {
-        ignore await balanceManager.updateBalance(user, balance);
-        #ok(await balanceManager.getBalance(user));
+        ignore await balanceManager.updateBalance(Principal.toText(user), balance);
+        #ok(await balanceManager.getBalance(Principal.toText(user)));
     };
     //-----------------------------------------------------------------------------
     // Stable Upgrade Canister Part
 
     stable var messagesStore : [(Principal, [Types.EventNotification])] = [];
     // TODO add local copy of subscriptionStore, publicationStore, allowlistStore
-    // stable var subscriptionStore : [(Principal, [Types.SubscriptionInfo])] = [];
-    // stable var publicationStore : [(Principal, [Types.PublicationInfo])] = [];
-    // stable var allowlistStore : [(Principal, Types.Permission)] = [];
+    stable var subscriptionStore : [(Principal, [Types.SubscriptionInfo])] = [];
+    stable var publicationStore : [(Principal, [Types.PublicationInfo])] = [];
+    stable var allowlistStore : [(Principal, Types.Permission)] = [];
+    stable var userBalansesStore : [(Text, Nat)] = [];
+    // PublicationManager
+    // stable var notificationsStore : [Principal, [EventNotificationId]] = [];
+    // stable var eventsStore : [Principal, [Types.Event]] = [];
+
+    // TODO StatsStore
 
     system func preupgrade() {
         messagesStore := Iter.toArray(messagesMap.entries());
-        // TODO add local copy of subscriptionStore, publicationStore, allowlistStore
-        // subscriptionStore := getSubcriptionsState();
-        // publicationStore := await pubManager.getAllPublications();
-        // allowlistStore := await allowlist.getAllowlist();
-
+        userBalansesStore := Iter.toArray(balanceManager.balances.entries());
+        subscriptionStore := Iter.toArray(subManager.subscriptions.entries());
+        publicationStore := Iter.toArray(pubManager.publications.entries());
+        allowlistStore := Iter.toArray(allowlist.allowList.keys());
         // TODO other stats (events, etc)
     };
 
@@ -431,15 +449,25 @@ actor class ICRC72Broadcaster() = Self {
             messagesMap.put(entry.0, entry.1);
         };
         messagesStore := [];
+        for (entry in userBalansesStore.vals()) {
+            balanceManager.balances.put(entry.0, entry.1);
+        };
+        userBalansesStore := [];
 
-        // subManager.initStore(subscriptionStore);
-        // subscriptionStore := [];
+        for (entry in subscriptionStore.vals()) {
+            subManager.subscriptions.put(entry.0, entry.1);
+        };
+        subscriptionStore := [];
 
-        // pubManager.initStore(publicationStore);
-        // publicationStore := [];
+        for (entry in publicationStore.vals()) {
+            pubManager.publications.put(entry.0, entry.1);
+        };
+        publicationStore := [];
 
-        // allowlist.initStore(allowlistStore);
-        // allowlistStore := [];
+        for (entry in allowlistStore.vals()) {
+            allowlist.allowList.put((entry.0, entry.1), null);
+        };
+        allowlistStore := [];
         // TODO other states
     };
 

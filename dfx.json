@@ -8,7 +8,7 @@
       "type": "motoko"
     },
     "test": {
-      "main": "src/client/stats/Stats.test.mo",
+      "main": "src/client/stats/NewTest.test.mo",
       "type": "motoko"
     }
   },

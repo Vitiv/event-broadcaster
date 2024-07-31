@@ -13,8 +13,11 @@ import T "../ICRC72Types";
 
 actor {
     let publicationStats = PublicationStats.PublicationStats();
-
-    public func runTests() : async Text {
+    let balanceManager = BalanceManager.BalanceManager();
+    let allowListManager = AllowListManager.AllowListManager();
+    let publisherManager = PublisherManager.PublisherManager();
+    let subscriptionManager = SubscriptionManager.SubscriptionManager();
+    public func runStatsTests() : async Text {
         var testsPassed = 0;
         var totalTests = 0;
 
@@ -303,5 +306,141 @@ actor {
 
         // Final result
         "Tests passed: " # debug_show (testsPassed) # " out of " # debug_show (totalTests);
+    };
+
+    // New test functions for BalanceManager
+    public func testBalanceManager() : async () {
+        Debug.print("Testing BalanceManager...");
+
+        let user1 = Principal.toText(Principal.fromText("aaaaa-aa"));
+
+        // Test updateBalance
+        let updateResult = await balanceManager.updateBalance(user1, 100);
+        assert (updateResult == 100);
+        Debug.print("BalanceManager: updateBalance test passed");
+
+        // Test getBalance
+        let balance = await balanceManager.getBalance(user1);
+        assert (balance == 100);
+        Debug.print("BalanceManager: getBalance test passed");
+    };
+
+    // New test functions for AllowListManager
+    public shared ({ caller }) func testAllowListManager() : async () {
+        Debug.print("Testing AllowListManager...");
+
+        // Test initAllowlist
+        let deployer = Principal.fromText("bd3sg-teaaa-aaaaa-qaaba-cai");
+        await allowListManager.initAllowlist(deployer);
+        Debug.print("Test AllowListManager: initAllowlist completed");
+
+        // Test getAllowList
+        let allowList = await allowListManager.getAllowList();
+        Debug.print("Test AllowListManager: getAllowList result: " # debug_show (allowList));
+        assert (allowList.size() == 1);
+        assert (allowList[0].0 == deployer);
+        assert (allowList[0].1 == #Admin);
+        Debug.print("Test AllowListManager: getAllowList test passed");
+
+        // Test addToAllowList
+        let user1 = "mls5s-5qaaa-aaaal-qi6rq-cai";
+        Debug.print("Test AllowListManager: Updateing balance for user1");
+        let updated = await balanceManager.updateBalance(user1, 100);
+        Debug.print("Test AllowListManager: check balance: " # debug_show (updated));
+        let addResult = await allowListManager.addToAllowList(caller, user1, #Read);
+        Debug.print("Test AllowListManager: addToAllowList result: " # debug_show (addResult));
+        assert (addResult == #ok(true));
+        Debug.print("Test AllowListManager: addToAllowList test passed");
+
+        // Test isUserInAllowList
+        Debug.print("Test AllowListManager: isUserInAllowList starting..");
+        let isInList = await allowListManager.isUserInAllowList(Principal.fromText(user1), #Read);
+        assert (isInList);
+        Debug.print("Test AllowListManager: isUserInAllowList test passed");
+
+        // Final getAllowList check
+        Debug.print("Test AllowListManager: final getAllowList starting..");
+        let finalAllowList = await allowListManager.getAllowList();
+        Debug.print("Test AllowListManager: final getAllowList result: " # debug_show (finalAllowList));
+        assert (finalAllowList.size() == 2);
+
+        Debug.print("All AllowListManager tests passed!");
+    };
+
+    // New test functions for PublisherManager
+    public func testPublisherManager() : async () {
+        Debug.print("Testing PublisherManager...");
+
+        let publisher1 = Principal.fromText("aaaaa-aa");
+        let namespace1 = "test.namespace";
+
+        // Test register_single_publication
+        let regResult = await publisherManager.register_single_publication(publisher1, { namespace = namespace1; config = [("key", #Text("value"))] });
+        assert (regResult.1);
+        Debug.print("PublisherManager: register_single_publication test passed");
+
+        // Test getPublications
+        let publications = await publisherManager.getPublications(publisher1);
+        assert (publications.size() > 0);
+        Debug.print("PublisherManager: getPublications test passed");
+
+        // Test getPublishers
+        let publishers = await publisherManager.getPublishers();
+        assert (publishers.size() > 0);
+        Debug.print("PublisherManager: getPublishers test passed");
+
+        // Test removePublication
+        let removeResult = await publisherManager.removePublication(publisher1, namespace1);
+        assert (removeResult);
+        Debug.print("PublisherManager: removePublication test passed");
+    };
+
+    // New test functions for SubscriptionManager
+    public func testSubscriptionManager() : async () {
+        Debug.print("Testing SubscriptionManager...");
+
+        let subscriber1 = Principal.fromText("aaaaa-aa");
+        let namespace1 = "test.namespace";
+
+        let subscription : T.SubscriptionInfo = {
+            namespace = namespace1;
+            subscriber = subscriber1;
+            active = true;
+            filters = ["test"];
+            messagesReceived = 0;
+            messagesRequested = 0;
+            messagesConfirmed = 0;
+        };
+
+        // Test icrc72_register_single_subscription
+        let regResult = await subscriptionManager.icrc72_register_single_subscription(subscription);
+        assert (regResult);
+        Debug.print("SubscriptionManager: icrc72_register_single_subscription test passed");
+
+        // Test getSubscribersByNamespace
+        let subscribers = await subscriptionManager.getSubscribersByNamespace(namespace1);
+        assert (subscribers.size() > 0);
+        Debug.print("SubscriptionManager: getSubscribersByNamespace test passed");
+
+        // Test getSubscriptionInfo
+        let subscriptionInfo = await subscriptionManager.getSubscriptionInfo(subscriber1);
+        assert (subscriptionInfo.size() > 0);
+        Debug.print("SubscriptionManager: getSubscriptionInfo test passed");
+
+        // Test unsubscribeByNamespace
+        await subscriptionManager.unsubscribeByNamespace(subscriber1, namespace1);
+        let updatedSubscriptionInfo = await subscriptionManager.getSubscriptionInfo(subscriber1);
+        assert (updatedSubscriptionInfo.size() == 0);
+        Debug.print("SubscriptionManager: unsubscribeByNamespace test passed");
+    };
+
+    public func runAllTests() : async () {
+        let statTestResult = await runStatsTests();
+        Debug.print("Stats tests: " # statTestResult);
+        await testBalanceManager();
+        await testPublisherManager();
+        await testSubscriptionManager();
+        await testAllowListManager();
+        Debug.print("All tests completed.");
     };
 };
