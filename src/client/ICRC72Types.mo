@@ -240,4 +240,28 @@ module {
         #Write;
     };
 
+    public type Reason = Text;
+    public type RejectedResponse = (Principal, Nat, Reason);
+
+    public type PublicationID = Nat;
+
+    public type StatFields = {
+        var eventCount : Nat;
+        var lastEventTimestamp : Nat;
+        var uniqueSources : Nat;
+        namespace : Text;
+        var dataSize : Nat;
+        var eventsSent : Nat;
+        var notifications : Nat;
+        var confirmations : Nat;
+        var errors : Nat;
+        var subscriberCount : Nat;
+    };
+
+    public type ResponsesStats = StatFields and {
+        var responsesReceived : Nat;
+        var responsesAccepted : Nat;
+        var responsesRejected : Nat;
+        var lastResponseTimestamp : Int;
+    };
 };

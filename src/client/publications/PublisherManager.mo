@@ -13,13 +13,12 @@ import Utils "../Utils";
 import AllowListManager "../allowlist/AllowListManager";
 
 module {
-    public class PublisherManager() = Self {
+    public class PublisherManager(allowlist : AllowListManager.AllowListManager) = Self {
         type Namespace = Text;
         type PublicationId = (Principal, Namespace);
         type EventNotificationId = Nat;
 
         var _deployer = Principal.fromText("aaaaa-aa");
-        let allowlist = AllowListManager.AllowListManager();
 
         public func init(deployer : Principal) : async () {
             _deployer := deployer;
@@ -210,6 +209,7 @@ module {
                 namespace = event.namespace;
                 config = default_publication_config;
             };
+            var counter = 0;
             ignore await register_single_publication(event.source, publication);
             var result = Buffer.Buffer<Nat>(subscribers.size());
             // send event to all subscribers
@@ -230,10 +230,12 @@ module {
                     } else null;
                 };
                 saveEvent(event);
-
+                Debug.print("PubManager.publishEventToSubscribers: Sending message " # debug_show (message) # " to subscriber: " # Principal.toText(subscriber.subscriber));
                 await subscriber_actor.icrc72_handle_notification([message]);
                 saveNotification(subscriber.subscriber, message);
-
+                counter += 1;
+                Debug.print("PubManager.publishEventToSubscribers: Message sent to subscriber: " # Principal.toText(subscriber.subscriber));
+                result.add(counter);
             };
             Buffer.toArray(result);
         };

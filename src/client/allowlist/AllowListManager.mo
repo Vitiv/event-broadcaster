@@ -10,15 +10,13 @@ import SubscriptionManager "../subscriptions/SubscriptionManager";
 import BalanceManager "../balance/BalanceManager";
 
 module {
-    public class AllowListManager() = Self {
+    public class AllowListManager(sm : SubscriptionManager.SubscriptionManager, bm : BalanceManager.BalanceManager) = Self {
         type Set<T> = HashMap.HashMap<T, Null>;
 
         type UserPermission = (Principal, T.Permission);
 
         var _deployer = Principal.fromText("bs3e6-4i343-voosn-wogd7-6kbdg-mctak-hn3ws-k7q7f-fye2e-uqeyh-yae");
         var _initialized = false;
-
-        let balanceManager = BalanceManager.BalanceManager();
 
         public func initAllowlist(deployer : Principal) : async () {
             let initResult = await setDeployer(deployer);
@@ -33,7 +31,6 @@ module {
                 };
             };
             // create subscription to get $EVENT balance updates
-            let subManager = SubscriptionManager.SubscriptionManager();
             let subscription : T.SubscriptionInfo = {
                 namespace = "event.hub.event.balance";
                 filters = ["balance.update"];
@@ -43,7 +40,7 @@ module {
                 messagesRequested = 0;
                 messagesConfirmed = 0;
             };
-            let create_subscription = await subManager.icrc72_register_single_subscription(subscription);
+            let create_subscription = await sm.icrc72_register_single_subscription(subscription);
             if (not create_subscription) {
                 Debug.print("Failed to create subscription");
             };
@@ -106,7 +103,7 @@ module {
             switch (allowList.get((user, permission))) {
                 case (?_) true;
                 case null {
-                    let balance = await balanceManager.getBalance(Principal.toText(user));
+                    let balance = await bm.getBalance(Principal.toText(user));
                     Debug.print("AllowListManager.isUserInAllowList balance: " # debug_show (balance));
                     if (balance > 0) {
                         allowList.put((user, permission), null);

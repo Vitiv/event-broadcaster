@@ -9,39 +9,17 @@ import Nat32 "mo:base/Nat32";
 import Result "mo:base/Result";
 import Time "mo:base/Time";
 import Debug "mo:base/Debug";
-import Array "mo:base/Array";
 import T "../ICRC72Types";
 import Utils "../Utils";
 
 module {
-    public type PublicationID = Nat;
-
-    public type StatFields = {
-        var eventCount : Nat;
-        var lastEventTimestamp : Nat;
-        var uniqueSources : Nat;
-        namespace : Text;
-        var dataSize : Nat;
-        var eventsSent : Nat;
-        var notifications : Nat;
-        var confirmations : Nat;
-        var errors : Nat;
-        var subscriberCount : Nat;
-    };
-
-    public type ResponsesStats = StatFields and {
-        var responsesReceived : Nat;
-        var responsesAccepted : Nat;
-        var responsesRejected : Nat;
-        var lastResponseTimestamp : Int;
-    };
 
     public class PublicationStats() {
-        public var stats = HashMap.HashMap<PublicationID, StatFields>(10, Nat.equal, Hash.hash);
-        public var sources = HashMap.HashMap<PublicationID, HashMap.HashMap<Text, Bool>>(10, Nat.equal, Hash.hash);
-        public var responses = HashMap.HashMap<PublicationID, ResponsesStats>(10, Nat.equal, Hash.hash);
+        public var stats = HashMap.HashMap<T.PublicationID, T.StatFields>(10, Nat.equal, Hash.hash);
+        public var sources = HashMap.HashMap<T.PublicationID, HashMap.HashMap<Text, Bool>>(10, Nat.equal, Hash.hash);
+        public var responses = HashMap.HashMap<T.PublicationID, T.ResponsesStats>(10, Nat.equal, Hash.hash);
 
-        public func registerPublication(id : PublicationID, registration : { namespace : Text }) : async Result.Result<Nat, Text> {
+        public func registerPublication(id : T.PublicationID, registration : { namespace : Text }) : async Result.Result<Nat, Text> {
             switch (stats.get(id)) {
                 case null {
                     let newStats = {
@@ -67,7 +45,7 @@ module {
         };
 
         public func recordEvent(
-            id : PublicationID,
+            id : T.PublicationID,
             event : {
                 timestamp : Nat;
                 source : Principal;
@@ -91,7 +69,7 @@ module {
             };
         };
 
-        public func updateSubscribers(id : PublicationID, change : Int) {
+        public func updateSubscribers(id : T.PublicationID, change : Int) {
             switch (stats.get(id)) {
                 case null {
                     /* Ignoring updates for unregistered publications */
@@ -106,7 +84,7 @@ module {
             };
         };
 
-        public func increment(id : PublicationID, field : Text) {
+        public func increment(id : T.PublicationID, field : Text) {
             switch (stats.get(id)) {
                 case null {
                     /* Ignoring updates for unregistered publications */
@@ -120,7 +98,7 @@ module {
                         case "responsesReceived" {
                             switch (responses.get(id)) {
                                 case null {
-                                    let newResponseStats : ResponsesStats = {
+                                    let newResponseStats : T.ResponsesStats = {
                                         var responsesReceived = 1;
                                         var responsesAccepted = 0;
                                         var responsesRejected = 0;
@@ -170,7 +148,7 @@ module {
             };
         };
 
-        public func get(id : PublicationID, field : Text) : ?Nat {
+        public func get(id : T.PublicationID, field : Text) : ?Nat {
             switch (stats.get(id)) {
                 case null {
                     // If not found in stats, check responses
@@ -235,14 +213,14 @@ module {
             };
         };
 
-        public func getNamespace(id : PublicationID) : ?Text {
+        public func getNamespace(id : T.PublicationID) : ?Text {
             switch (stats.get(id)) {
                 case null { null };
                 case (?pubStats) { ?pubStats.namespace };
             };
         };
 
-        public func getAll(id : PublicationID) : [(Text, Nat)] {
+        public func getAll(id : T.PublicationID) : [(Text, Nat)] {
             var resStat = switch (stats.get(id)) {
                 case null { null };
                 case (?pubStats) {
@@ -269,10 +247,10 @@ module {
                     ];
                 };
             };
-            Array.append(Option.get(resStat, []), Option.get(resResp, []));
+            Utils.appendArray(Option.get(resStat, []), Option.get(resResp, []));
         };
 
-        public func getAllPublications() : [PublicationID] {
+        public func getAllPublications() : [T.PublicationID] {
             Iter.toArray(stats.keys());
         };
 
@@ -374,24 +352,25 @@ module {
                 ", lastTimestamp=" # debug_show (currentResponseStats.lastResponseTimestamp)
             );
         };
-        public func getPublicationId(namespace : Text, source : Principal) : PublicationID {
+        public func getPublicationId(namespace : Text, source : Principal) : T.PublicationID {
             let combinedHash = Text.hash(namespace) ^ Principal.hash(source);
             Nat32.toNat(combinedHash) % 1_000_000;
         };
 
         private func getDataSize(data : T.ICRC16) : Nat {
             // TODO
+            // Debug.print("getDataSize: Not implement yet: " # debug_show (data));
             1;
         };
         // ------ Responses ------
 
-        public func getResponsedNamespace(id : PublicationID) : Text {
+        public func getResponsedNamespace(id : T.PublicationID) : Text {
             switch (responses.get(id)) {
                 case null { "" };
                 case (?pubStats) { pubStats.namespace };
             };
         };
-        public func recordResponse(id : PublicationID) {
+        public func recordResponse(id : T.PublicationID) {
             switch (responses.get(id)) {
                 case null { /* Ignore */ };
                 case (?pubStats) {
@@ -401,7 +380,7 @@ module {
             };
         };
 
-        public func recordRejectedResponse(id : PublicationID) {
+        public func recordRejectedResponse(id : T.PublicationID) {
             switch (responses.get(id)) {
                 case null { /* Ignore */ };
                 case (?pubStats) {
@@ -412,7 +391,7 @@ module {
             };
         };
 
-        public func getLastResponseTimestamp(id : PublicationID) : ?Int {
+        public func getLastResponseTimestamp(id : T.PublicationID) : ?Int {
             switch (responses.get(id)) {
                 case null { null };
                 case (?responseStats) {

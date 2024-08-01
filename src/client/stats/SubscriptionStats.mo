@@ -19,7 +19,7 @@ module {
     };
 
     public class SubscriptionStats() {
-        private let stats = HashMap.HashMap<SubscriberID, StatFields>(10, Principal.equal, Principal.hash);
+        public var stats = HashMap.HashMap<SubscriberID, StatFields>(10, Principal.equal, Principal.hash);
 
         public func registerSubscriber(id : SubscriberID) : async Result.Result<Nat, Text> {
             switch (stats.get(id)) {

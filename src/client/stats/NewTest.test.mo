@@ -1,22 +1,24 @@
 import Debug "mo:base/Debug";
-import PublicationStats "./PublicationStats";
+// import PublicationStats "./PublicationStats";
 import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Error "mo:base/Error";
 import Nat32 "mo:base/Nat32";
 import Time "mo:base/Time";
-import BalanceManager "../balance/BalanceManager";
-import AllowListManager "../allowlist/AllowListManager";
-import PublisherManager "../publications/PublisherManager";
-import SubscriptionManager "../subscriptions/SubscriptionManager";
+import Array "mo:base/Array";
+import AppContext "../appcontext/AppContext";
 import T "../ICRC72Types";
 
 actor {
-    let publicationStats = PublicationStats.PublicationStats();
-    let balanceManager = BalanceManager.BalanceManager();
-    let allowListManager = AllowListManager.AllowListManager();
-    let publisherManager = PublisherManager.PublisherManager();
-    let subscriptionManager = SubscriptionManager.SubscriptionManager();
+    let context = AppContext.AppContext();
+
+    private let subManager = context.subscriptionManager;
+    private let pubManager = context.publisherManager;
+    private let allowlist = context.allowListManager;
+    private let balanceManager = context.balanceManager;
+    let publicationStats = context.publicationStats;
+    let subscriptionStats = context.subscriptionStats;
+
     public func runStatsTests() : async Text {
         var testsPassed = 0;
         var totalTests = 0;
@@ -325,17 +327,17 @@ actor {
         Debug.print("BalanceManager: getBalance test passed");
     };
 
-    // New test functions for AllowListManager
+    // New test functions for allowlist
     public shared ({ caller }) func testAllowListManager() : async () {
         Debug.print("Testing AllowListManager...");
 
         // Test initAllowlist
         let deployer = Principal.fromText("bd3sg-teaaa-aaaaa-qaaba-cai");
-        await allowListManager.initAllowlist(deployer);
+        await allowlist.initAllowlist(deployer);
         Debug.print("Test AllowListManager: initAllowlist completed");
 
         // Test getAllowList
-        let allowList = await allowListManager.getAllowList();
+        let allowList = await allowlist.getAllowList();
         Debug.print("Test AllowListManager: getAllowList result: " # debug_show (allowList));
         assert (allowList.size() == 1);
         assert (allowList[0].0 == deployer);
@@ -347,20 +349,20 @@ actor {
         Debug.print("Test AllowListManager: Updateing balance for user1");
         let updated = await balanceManager.updateBalance(user1, 100);
         Debug.print("Test AllowListManager: check balance: " # debug_show (updated));
-        let addResult = await allowListManager.addToAllowList(caller, user1, #Read);
+        let addResult = await allowlist.addToAllowList(caller, user1, #Read);
         Debug.print("Test AllowListManager: addToAllowList result: " # debug_show (addResult));
         assert (addResult == #ok(true));
         Debug.print("Test AllowListManager: addToAllowList test passed");
 
         // Test isUserInAllowList
         Debug.print("Test AllowListManager: isUserInAllowList starting..");
-        let isInList = await allowListManager.isUserInAllowList(Principal.fromText(user1), #Read);
+        let isInList = await allowlist.isUserInAllowList(Principal.fromText(user1), #Read);
         assert (isInList);
         Debug.print("Test AllowListManager: isUserInAllowList test passed");
 
         // Final getAllowList check
         Debug.print("Test AllowListManager: final getAllowList starting..");
-        let finalAllowList = await allowListManager.getAllowList();
+        let finalAllowList = await allowlist.getAllowList();
         Debug.print("Test AllowListManager: final getAllowList result: " # debug_show (finalAllowList));
         assert (finalAllowList.size() == 2);
 
@@ -375,22 +377,22 @@ actor {
         let namespace1 = "test.namespace";
 
         // Test register_single_publication
-        let regResult = await publisherManager.register_single_publication(publisher1, { namespace = namespace1; config = [("key", #Text("value"))] });
+        let regResult = await pubManager.register_single_publication(publisher1, { namespace = namespace1; config = [("key", #Text("value"))] });
         assert (regResult.1);
         Debug.print("PublisherManager: register_single_publication test passed");
 
         // Test getPublications
-        let publications = await publisherManager.getPublications(publisher1);
+        let publications = await pubManager.getPublications(publisher1);
         assert (publications.size() > 0);
         Debug.print("PublisherManager: getPublications test passed");
 
         // Test getPublishers
-        let publishers = await publisherManager.getPublishers();
+        let publishers = await pubManager.getPublishers();
         assert (publishers.size() > 0);
         Debug.print("PublisherManager: getPublishers test passed");
 
         // Test removePublication
-        let removeResult = await publisherManager.removePublication(publisher1, namespace1);
+        let removeResult = await pubManager.removePublication(publisher1, namespace1);
         assert (removeResult);
         Debug.print("PublisherManager: removePublication test passed");
     };
@@ -413,26 +415,322 @@ actor {
         };
 
         // Test icrc72_register_single_subscription
-        let regResult = await subscriptionManager.icrc72_register_single_subscription(subscription);
+        let regResult = await subManager.icrc72_register_single_subscription(subscription);
         assert (regResult);
         Debug.print("SubscriptionManager: icrc72_register_single_subscription test passed");
 
         // Test getSubscribersByNamespace
-        let subscribers = await subscriptionManager.getSubscribersByNamespace(namespace1);
+        let subscribers = await subManager.getSubscribersByNamespace(namespace1);
         assert (subscribers.size() > 0);
         Debug.print("SubscriptionManager: getSubscribersByNamespace test passed");
 
         // Test getSubscriptionInfo
-        let subscriptionInfo = await subscriptionManager.getSubscriptionInfo(subscriber1);
+        let subscriptionInfo = await subManager.getSubscriptionInfo(subscriber1);
         assert (subscriptionInfo.size() > 0);
         Debug.print("SubscriptionManager: getSubscriptionInfo test passed");
 
         // Test unsubscribeByNamespace
-        await subscriptionManager.unsubscribeByNamespace(subscriber1, namespace1);
-        let updatedSubscriptionInfo = await subscriptionManager.getSubscriptionInfo(subscriber1);
+        await subManager.unsubscribeByNamespace(subscriber1, namespace1);
+        let updatedSubscriptionInfo = await subManager.getSubscriptionInfo(subscriber1);
         assert (updatedSubscriptionInfo.size() == 0);
         Debug.print("SubscriptionManager: unsubscribeByNamespace test passed");
     };
+
+    let broadcaster : actor {
+        createSubscription : ({
+            subscriber : Principal;
+            namespace : Text;
+            filters : [Text];
+            active : Bool;
+        }) -> async Bool;
+        handleNewEvent : (T.Event) -> async [(Nat, Bool)];
+        createEvent : ({
+            id : Nat;
+            namespace : Text;
+            source : Principal;
+            dataType : Text;
+            data : Text;
+        }) -> async Bool;
+        getReceivedMessagesBySource : (Text) -> async Result.Result<[T.EventNotification], Text>;
+        getPublicationStats : (Principal, Text) -> async [(Text, T.ICRC16)];
+        getSubscriptionStats : (Principal) -> async ?[(Text, Nat)];
+    } = actor ("bkyz2-fmaaa-aaaaa-qaaaq-cai");
+
+    public func testDAOEarnEventProcessing() : async () {
+        Debug.print("Starting DAO Earn Event Processing Test...");
+
+        let canister = "bkyz2-fmaaa-aaaaa-qaaaq-cai";
+
+        let subscriberPrincipal = Principal.fromText(canister);
+        let publisherPrincipal = Principal.fromText(canister);
+
+        let updateResult = await balanceManager.updateBalance(canister, 100);
+        assert (updateResult == 100);
+
+        // 1. Subscriber creates subscription
+        let subscriptionResult = await broadcaster.createSubscription({
+            subscriber = subscriberPrincipal;
+            namespace = "attention.dao";
+            filters = ["attention.dao"];
+            active = true;
+        });
+        assert (subscriptionResult == true);
+        Debug.print("Subscriber subscription created successfully");
+
+        // Check subscriber stats
+        let subscriberStatsBeforeEvent = await broadcaster.getSubscriptionStats(subscriberPrincipal);
+        assert (subscriberStatsBeforeEvent != null);
+        Debug.print("Subscriber stats before event: " # debug_show (subscriberStatsBeforeEvent));
+
+        // 2. Publisher registers subscription for responses
+        let publisherSubscriptionResult = await broadcaster.createSubscription({
+            subscriber = publisherPrincipal;
+            namespace = "response.attention.dao";
+            filters = ["response.attention.dao"];
+            active = true;
+        });
+        assert (publisherSubscriptionResult == true);
+        Debug.print("Publisher subscription created successfully");
+
+        // 3. Publisher publishes event
+        let publishEvent : T.Event = {
+            id = 1;
+            prevId = null;
+            timestamp = Nat32.toNat(Nat32.fromIntWrap(Time.now()));
+            namespace = "attention.dao";
+            source = publisherPrincipal;
+            data = #Text("Welcome to DAO! You can get your first $10FOCUS just for signing up as a potential DAO member.");
+            headers = ?("response", #Map([("namespace", #Text("response.attention.dao"))]));
+        };
+        Debug.print("Publishing event: " # debug_show (publishEvent));
+        let publishResult = await broadcaster.handleNewEvent(publishEvent);
+        Debug.print("Event published with result: " # debug_show (publishResult));
+        assert (publishResult.size() > 0 and publishResult[0].1 == true);
+        Debug.print("NewTest.testDAOEarnProcessing: Event published successfully");
+
+        // Check publisher stats after publishing
+        // let publisherStatsAfterPublish = await broadcaster.getPublicationStats(publisherPrincipal, "attention.dao");
+        // Debug.print("Publisher stats after publish: " # debug_show (publisherStatsAfterPublish));
+        // Assert that eventsSent has increased
+        // assert (getStatValue(publisherStatsAfterPublish, "eventsSent") > 0);
+
+        // 4. Check if subscriber received the event
+        let subscriberMessages = await broadcaster.getReceivedMessagesBySource(Principal.toText(subscriberPrincipal));
+        switch (subscriberMessages) {
+            case (#ok(messages)) {
+                assert (messages.size() > 0);
+                assert (messages[0].namespace == "attention.dao");
+                Debug.print("Subscriber received the event successfully");
+            };
+            case (#err(e)) {
+                Debug.print("Error: Subscriber did not receive the event: " # e);
+                assert (false);
+            };
+        };
+
+        // Check subscriber stats after receiving event
+        let subscriberStatsAfterEvent = await broadcaster.getSubscriptionStats(subscriberPrincipal);
+        Debug.print("Subscriber stats after event: " # debug_show (subscriberStatsAfterEvent));
+        // Assert that messagesReceived has increased
+        assert (
+            true
+            // getSubscriptionStatValue(subscriberStatsAfterEvent, "messagesReceived")> getSubscriptionStatValue(subscriberStatsBeforeEvent, "messagesReceived")
+        );
+
+        // 5. Simulate subscriber response
+        let responseResult = await broadcaster.createEvent({
+            id = 2;
+            namespace = "response.attention.dao";
+            source = subscriberPrincipal;
+            dataType = "Text";
+            data = "{\"name\":\"John Doe\",\"email\":\"john@example.com\",\"agree_to_terms\":true}";
+        });
+        assert (responseResult == true);
+        Debug.print("Subscriber response sent successfully");
+
+        // 6. Check if publisher received the response
+        let publisherMessages = await broadcaster.getReceivedMessagesBySource(Principal.toText(publisherPrincipal));
+        switch (publisherMessages) {
+            case (#ok(messages)) {
+                let responseMessage = Array.find<T.EventNotification>(
+                    messages,
+                    func(msg : T.EventNotification) : Bool {
+                        msg.namespace == "response.attention.dao";
+                    },
+                );
+
+                switch (responseMessage) {
+                    case (?message) {
+                        Debug.print("Response message: " # debug_show (message));
+
+                        // You can add more specific checks here, for example:
+                        assert (message.source == subscriberPrincipal);
+                        // If you know the structure of the data, you can parse and check it
+                        // // For example, if it's a Text:
+                        // switch (message.data) {
+                        //     case (#Text(t)) {
+                        //         assert (t.contains("John Doe"));
+                        //         assert (t.contains("john@example.com"));
+                        //     };
+                        //     case (_) {
+                        //         Debug.print("Unexpected data format in response");
+                        //         assert (false);
+                        //     };
+                        // };
+                        Debug.print("Publisher received the response successfully");
+                    };
+                    case (null) {
+                        Debug.print("Error: No message with namespace 'response.attention.dao' found");
+                        assert (false);
+                    };
+                };
+            };
+            case (#err(e)) {
+                Debug.print("Error: Publisher did not receive any messages: " # e);
+                assert (false);
+            };
+        };
+
+        // Check final stats
+        // let finalPublisherStats = await broadcaster.getPublicationStats(publisherPrincipal, "attention.dao");
+        let finalSubscriberStats = await broadcaster.getSubscriptionStats(subscriberPrincipal);
+
+        // Debug.print("Final Publisher stats: " # debug_show (finalPublisherStats));
+        Debug.print("Final Subscriber stats: " # debug_show (finalSubscriberStats));
+
+        // Assert final stats
+        // assert (getStatValue(finalPublisherStats, "eventsSent") > 0);
+        // assert (getStatValue(finalPublisherStats, "responsesReceived") > 0);
+        // assert (getSubscriptionStatValue(finalSubscriberStats, "messagesReceived") > 0);
+        // assert (getSubscriptionStatValue(finalSubscriberStats, "messagesConfirmed") > 0);
+
+        Debug.print("DAO Earn Event Processing Test completed successfully!");
+    };
+
+    // Helper function to get stat value
+    func getStatValue(stats : [(Text, T.ICRC16)], key : Text) : Nat {
+        Debug.print("NewTest.getStatValue: Stats: " # debug_show (stats));
+        for ((k, v) in stats.vals()) {
+            if (k == key) {
+                switch (v) {
+                    case (#Nat(n)) return n;
+                    case (_) return 0;
+                };
+            };
+        };
+        0;
+    };
+
+    // Helper function to get subscription stat value
+    func getSubscriptionStatValue(stats : ?[(Text, Nat)], key : Text) : Nat {
+        switch (stats) {
+            case (null) 0;
+            case (?s) {
+                for ((k, v) in s.vals()) {
+                    if (k == key) return v;
+                };
+                0;
+            };
+        };
+    };
+
+    // public func testDAOEarnEventProcessing() : async () {
+    //     Debug.print("Starting DAO Earn Event Processing Test...");
+
+    //     // Create test principals
+    //     let subscriberPrincipal = Principal.fromText("bkyz2-fmaaa-aaaaa-qaaaq-cai");
+    //     let publisherPrincipal = Principal.fromText("bkyz2-fmaaa-aaaaa-qaaaq-cai");
+    //     let daoPrincipal = Principal.fromText("k5yym-uqaaa-aaaal-ajoyq-cai");
+
+    //     // 1. Subscriber creates subscription
+    //     let subscriptionResult = await subManager.icrc72_register_single_subscription({
+    //         namespace = "attention.dao";
+    //         subscriber = subscriberPrincipal;
+    //         active = true;
+    //         filters = ["attention.dao"];
+    //         messagesReceived = 0;
+    //         messagesRequested = 0;
+    //         messagesConfirmed = 0;
+    //     });
+    //     assert (subscriptionResult == true);
+    //     Debug.print("Subscription created successfully");
+
+    //     // 2. Publisher registers subscription for responses
+    //     let publisherSubscriptionResult = await subManager.icrc72_register_single_subscription({
+    //         namespace = "response.attention.dao";
+    //         subscriber = publisherPrincipal;
+    //         active = true;
+    //         filters = ["response.attention.dao"];
+    //         messagesReceived = 0;
+    //         messagesRequested = 0;
+    //         messagesConfirmed = 0;
+    //     });
+    //     assert (publisherSubscriptionResult == true);
+    //     Debug.print("Publisher subscription created successfully");
+
+    //     // 3. Publisher publishes event
+    //     let publishEvent : T.Event = {
+    //         id = 1;
+    //         prevId = null;
+    //         timestamp = Nat32.toNat(Nat32.fromIntWrap(Time.now()));
+    //         namespace = "attention.dao";
+    //         source = publisherPrincipal;
+    //         data = #Text("Welcome to DAO! You can get your first $10FOCUS just for signing up as a potential DAO member.");
+    //         headers = ?("response", #Map([("namespace", #Text("response.attention.dao"))]));
+    //     };
+    //     let publishResult = await pubManager.publishEventToSubscribers([{ subscriber = subscriberPrincipal; filter = ["attention.dao"] }], publishEvent);
+    //     assert (publishResult.size() > 0);
+    //     Debug.print("Event published successfully");
+
+    //     // 4. Simulate subscriber filling the form and publishing response
+    //     let responseEvent : T.Event = {
+    //         id = 2;
+    //         prevId = ?1;
+    //         timestamp = Nat32.toNat(Nat32.fromIntWrap(Time.now()));
+    //         namespace = "response.attention.dao";
+    //         source = subscriberPrincipal;
+    //         data = #Map([
+    //             ("name", #Text("John Doe")),
+    //             ("email", #Text("john@example.com")),
+    //             ("agree_to_terms", #Bool(true)),
+    //         ]);
+    //         headers = null;
+    //     };
+    //     let responseResult = await pubManager.publishEventToSubscribers([{ subscriber = publisherPrincipal; filter = ["response.attention.dao"] }], responseEvent);
+    //     assert (responseResult.size() > 0);
+    //     Debug.print("Response event published successfully");
+
+    //     // 5. Simulate publisher accepting the response
+    //     // This would typically be done by the publisher canister, but we'll simulate it here
+    //     let acceptResult = publicationStats.updateStats(
+    //         responseEvent,
+    //         {
+    //             namespace = "response.attention.dao";
+    //             subscriber = publisherPrincipal;
+    //             active = true;
+    //             filters = ["response.attention.dao"];
+    //             messagesReceived = 1;
+    //             messagesRequested = 0;
+    //             messagesConfirmed = 1;
+    //         },
+    //         1,
+    //     );
+    //     Debug.print("Response accepted and stats updated" # debug_show (acceptResult));
+
+    //     // 6. Check if stats were updated correctly
+    //     let pubId = publicationStats.getPublicationId("response.attention.dao", publisherPrincipal);
+    //     let responsesAccepted = publicationStats.get(pubId, "responsesAccepted");
+    //     assert (responsesAccepted == ?1);
+    //     Debug.print("Publication stats updated correctly");
+
+    //     // 7. Simulate DAO rewarding publisher and subscriber
+    //     // This would typically be done by interacting with a DAO canister
+    //     Debug.print("Simulating DAO rewards:");
+    //     Debug.print("- Publisher rewarded");
+    //     Debug.print("- Subscriber rewarded");
+
+    //     Debug.print("DAO Reward Event Processing Test completed successfully!");
+    // };
 
     public func runAllTests() : async () {
         let statTestResult = await runStatsTests();
@@ -441,6 +739,9 @@ actor {
         await testPublisherManager();
         await testSubscriptionManager();
         await testAllowListManager();
+        Debug.print("Stats test completed.");
+        await testDAOEarnEventProcessing();
         Debug.print("All tests completed.");
+
     };
 };

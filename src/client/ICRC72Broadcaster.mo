@@ -4,7 +4,6 @@ import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
 import Hash "mo:base/Hash";
 import HashMap "mo:base/HashMap";
-import Int "mo:base/Int";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Nat32 "mo:base/Nat32";
@@ -15,20 +14,22 @@ import Result "mo:base/Result";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
 
-import AllowListManager "./allowlist/AllowListManager";
-import BalanceManager "./balance/BalanceManager";
-// import T "./EthTypes";
-// import EthSender "./EventSender";
-import Publisher "./publications/PublisherManager";
-import SubscriptionManager "./subscriptions/SubscriptionManager";
-import RejectedHandler "./stats/RejectedResponsesHandler";
-import PubStat "./stats/PublicationStats";
-import SubStat "./stats/SubscriptionStats";
+import AppContext "./appcontext/AppContext";
 import Types "ICRC72Types";
 import Utils "Utils";
 
 actor class ICRC72Broadcaster() = Self {
-
+    /*
+        public class AppContext() {
+        public let publicationStats = PublicationStats.PublicationStats();
+        public let balanceManager = BalanceManager.BalanceManager();
+        public let allowListManager = AllowListManager.AllowListManager();
+        public let publisherManager = PublisherManager.PublisherManager();
+        public let subscriptionManager = SubscriptionManager.SubscriptionManager();
+        public let subscriptionStats = SubStats.SubscriptionStats();
+    };
+    */
+    let context = AppContext.AppContext();
     // recieved messages by source
     type Source = Principal;
     private var messagesMap = HashMap.HashMap<Source, [Types.EventNotification]>(10, Principal.equal, Principal.hash);
@@ -46,17 +47,17 @@ actor class ICRC72Broadcaster() = Self {
     var eventHubBalance = "event.hub.balance";
     let dao_canister = "k5yym-uqaaa-aaaal-ajoyq-cai";
 
-    private let subManager = SubscriptionManager.SubscriptionManager();
-    private let pubManager = Publisher.PublisherManager();
+    private let subManager = context.subscriptionManager;
+    private let pubManager = context.publisherManager;
     // TODO
-    private let allowlist = AllowListManager.AllowListManager();
+    private let allowlist = context.allowListManager;
     // For DAO token support
-    private let balanceManager = BalanceManager.BalanceManager();
+    private let balanceManager = context.balanceManager;
 
-    let publicationStats = PubStat.PublicationStats();
-    let subscriptionStats = SubStat.SubscriptionStats();
+    let publicationStats = context.publicationStats;
+    let subscriptionStats = context.subscriptionStats;
 
-    let rejectedResponsesHandler = RejectedHandler.RejectedResponsesHandler(publicationStats);
+    let rejectedResponsesHandler = context.rejectHandler;
 
     // init allowlist on startup
     var initialized = false;
@@ -120,15 +121,16 @@ actor class ICRC72Broadcaster() = Self {
 
         // Get all subscriptions for this event
         let subscriptions = await subManager.getSubscriptionsByNamespace(event.namespace);
-
+        Debug.print("Found " # Nat.toText(subscriptions.size()) # " subscriptions for namespace " # event.namespace);
         if (subscriptions.size() == 0) {
             return [(0, false)];
         };
 
         for (subscription in subscriptions.vals()) {
+            Debug.print("Checking subscription for " # debug_show (subscription));
             if (subscription.active) {
                 let matchesFilter = checkFilters(event.namespace, subscription.filters);
-
+                Debug.print("Checking subscription for " # debug_show (subscription));
                 if (matchesFilter) {
                     let subscriber : Types.Subscriber = {
                         subscriber = subscription.subscriber;
@@ -137,15 +139,17 @@ actor class ICRC72Broadcaster() = Self {
 
                     // Decrease balance
                     var publisher_balance = Option.get(balanceManager.balances.get(Principal.toText(event.source)), 0);
-                    if (publisher_balance > 0) {
-                        balanceManager.balances.put(Principal.toText(event.source), publisher_balance - 1);
-                    } else {
-                        // insufficient balance
-                        return [(0, false)];
-                    };
+                    Debug.print("Publisher balance: " # Nat.toText(publisher_balance));
+                    // if (publisher_balance > 0) {
+                    //     balanceManager.balances.put(Principal.toText(event.source), publisher_balance - 1);
+                    // } else {
+                    //     // insufficient balance
+                    //     return [(0, false)];
+                    // };
 
                     //Publish event
                     let publish_result = await pubManager.publishEventToSubscribers([subscriber], event);
+                    Debug.print("Publish result: " # debug_show (publish_result));
                     result_buffer.add(event.id, publish_result.size() > 0);
 
                     // Stats
@@ -231,7 +235,10 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     public shared func subscribe(subscription : Types.SubscriptionInfo) : async Bool {
-        await subManager.icrc72_register_single_subscription(subscription);
+        Debug.print("Broadcaster.subscribe started with " # debug_show (subscription));
+        let res = await subManager.icrc72_register_single_subscription(subscription);
+        Debug.print("Broadcaster.subscribe finished with " # debug_show (res));
+        res;
     };
 
     public shared func icrc72_register_subscription(subscription : [Types.SubscriptionInfo]) : async [(Types.SubscriptionInfo, Bool)] {
@@ -829,7 +836,7 @@ actor class ICRC72Broadcaster() = Self {
     // };
 
     // ------ Rejected Responses ------
-    public shared (msg) func rejectedResponses(publicationId : Nat, rejectedResponses : [(Principal, Nat, RejectedHandler.Reason)]) : async [(Principal, Nat, Bool)] {
+    public shared (msg) func rejectedResponses(publicationId : Nat, rejectedResponses : [(Principal, Nat, Types.Reason)]) : async [(Principal, Nat, Bool)] {
         // Check if the publisher is the owner of the publication
         let isPublisher : ?Types.PublicationInfo = await pubManager.getPublicationsByNamespace(msg.caller, publicationStats.getResponsedNamespace(publicationId));
         switch (isPublisher) {
@@ -841,5 +848,18 @@ actor class ICRC72Broadcaster() = Self {
                 await rejectedResponsesHandler.handleRejectedResponses(msg.caller, publicationId, rejectedResponses);
             };
         };
+    };
+
+    var statCount = 0;
+    //--------------------------------- Stats ---------------------------------
+    public func getSubscriptionStats() : async ?[(Text, Nat)] {
+        // let stats = Iter.toArray(subscriptionStats.stats.entries());
+        statCount += 1;
+        ?[("test", statCount)];
+    };
+
+    public func getPublicationStats() : async ?[(Text, Types.ICRC16)] {
+        statCount += 1;
+        let res : ?[(Text, Types.ICRC16)] = ?[("test", #Nat(statCount))];
     };
 };
