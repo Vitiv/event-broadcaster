@@ -19,16 +19,6 @@ import Types "ICRC72Types";
 import Utils "Utils";
 
 actor class ICRC72Broadcaster() = Self {
-    /*
-        public class AppContext() {
-        public let publicationStats = PublicationStats.PublicationStats();
-        public let balanceManager = BalanceManager.BalanceManager();
-        public let allowListManager = AllowListManager.AllowListManager();
-        public let publisherManager = PublisherManager.PublisherManager();
-        public let subscriptionManager = SubscriptionManager.SubscriptionManager();
-        public let subscriptionStats = SubStats.SubscriptionStats();
-    };
-    */
     let context = AppContext.AppContext();
     // recieved messages by source
     type Source = Principal;
@@ -235,12 +225,12 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     public shared func subscribe(subscription : Types.SubscriptionInfo) : async Bool {
-        Debug.print("Broadcaster.subscribe started with " # debug_show (subscription));
         let res = await subManager.icrc72_register_single_subscription(subscription);
-        Debug.print("Broadcaster.subscribe finished with " # debug_show (res));
+        // if (res) {
+        //     subscriptionStats.recordSubscription(subscription.subscriber, Nat32.toNat(Nat32.fromIntWrap(Time.now())));
+        // };
         res;
     };
-
     public shared func icrc72_register_subscription(subscription : [Types.SubscriptionInfo]) : async [(Types.SubscriptionInfo, Bool)] {
         await subManager.icrc72_register_subscription(subscription);
     };
@@ -256,14 +246,15 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     public shared ({ caller }) func unsubscribeAll(subscriber : Principal) : async () {
-        // TODO change to allow list
-        if (Principal.equal(caller, subscriber)) {
+        if (await allowlist.isUserInAllowList(caller, #Admin)) {
             await subManager.unsubscribeAll(subscriber);
         };
     };
 
-    public func unsubscribeByNamespace(subscriber : Principal, namespace : Text) : async () {
-        await subManager.unsubscribeByNamespace(subscriber, namespace);
+    public shared ({ caller }) func unsubscribeByNamespace(subscriber : Principal, namespace : Text) : async () {
+        if (caller == subscriber) {
+            await subManager.unsubscribeByNamespace(subscriber, namespace);
+        };
     };
 
     public func confirm_messages(eventIds : [Nat]) : async [Result.Result<Bool, Text>] {
@@ -296,6 +287,8 @@ actor class ICRC72Broadcaster() = Self {
 
     public func icrc72_handle_notification(messages : [Types.EventNotification]) : async () {
         for (message in messages.vals()) {
+            subscriptionStats.recordMessageReceived(Principal.fromActor(Self), publicationStats.getDataSize(message.data));
+
             // DAOBalance namespace handling
             if (message.source == Principal.fromText(dao_canister) and message.namespace == eventHubBalance) {
                 switch (message.data) {
@@ -343,6 +336,8 @@ actor class ICRC72Broadcaster() = Self {
 
     public func icrc72_handle_notification_trusted(messages : [Types.EventNotification]) : async [Result.Result<Bool, Text>] {
         for (message in messages.vals()) {
+            subscriptionStats.recordMessageReceived(Principal.fromActor(Self), publicationStats.getDataSize(message.data));
+
             let existingMessage = messagesMap.get(message.source);
             switch (existingMessage) {
                 case (null) messagesMap.put(message.source, [message]);
@@ -850,16 +845,16 @@ actor class ICRC72Broadcaster() = Self {
         };
     };
 
-    var statCount = 0;
     //--------------------------------- Stats ---------------------------------
-    public func getSubscriptionStats() : async ?[(Text, Nat)] {
-        // let stats = Iter.toArray(subscriptionStats.stats.entries());
-        statCount += 1;
-        ?[("test", statCount)];
+    public func getSubscriptionStats(subscriber : Principal) : async ?[(Text, Nat)] {
+        subscriptionStats.getAll(subscriber);
     };
 
-    public func getPublicationStats() : async ?[(Text, Types.ICRC16)] {
-        statCount += 1;
-        let res : ?[(Text, Types.ICRC16)] = ?[("test", #Nat(statCount))];
+    public func getPublicationStats() : async [Types.PublicationID] {
+        await publicationStats.getAllPublications();
+    };
+
+    public func getAllStatsById(id : Types.PublicationID) : async [(Text, Nat)] {
+        publicationStats.getAll(id);
     };
 };

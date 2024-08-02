@@ -250,7 +250,7 @@ module {
             Utils.appendArray(Option.get(resStat, []), Option.get(resResp, []));
         };
 
-        public func getAllPublications() : [T.PublicationID] {
+        public func getAllPublications() : async [T.PublicationID] {
             Iter.toArray(stats.keys());
         };
 
@@ -344,6 +344,7 @@ module {
             currentResponseStats.lastResponseTimestamp := Time.now();
 
             responses.put(publicationID, currentResponseStats);
+            stats.put(publicationID, currentResponseStats);
 
             Debug.print(
                 "Updated response stats for publicationID " # debug_show (publicationID) # ": received=" # debug_show (currentResponseStats.responsesReceived) #
@@ -352,16 +353,80 @@ module {
                 ", lastTimestamp=" # debug_show (currentResponseStats.lastResponseTimestamp)
             );
         };
+
         public func getPublicationId(namespace : Text, source : Principal) : T.PublicationID {
             let combinedHash = Text.hash(namespace) ^ Principal.hash(source);
             Nat32.toNat(combinedHash) % 1_000_000;
         };
 
-        private func getDataSize(data : T.ICRC16) : Nat {
-            // TODO
-            // Debug.print("getDataSize: Not implement yet: " # debug_show (data));
-            1;
+        public func getDataSize(data : T.ICRC16) : Nat {
+            func getSizeRecursive(d : T.ICRC16) : Nat {
+                switch (d) {
+                    case (#Array(arr)) {
+                        var size = 0;
+                        for (item in arr.vals()) {
+                            size += getSizeRecursive(item);
+                        };
+                        size;
+                    };
+                    case (#Blob(b)) { b.size() };
+                    case (#Bool(_)) { 1 };
+                    case (#Bytes(bytes)) { bytes.size() };
+                    case (#Class(props)) {
+                        var size = 0;
+                        for (prop in props.vals()) {
+                            size += prop.name.size() + getSizeRecursive(prop.value) + 1; // +1 for immutable flag
+                        };
+                        size;
+                    };
+                    case (#Float(_)) { 8 }; // Assuming 64-bit float
+                    case (#Floats(floats)) { floats.size() * 8 };
+                    case (#Int(_)) { 8 }; // Assuming 64-bit int
+                    case (#Int8(_)) { 1 };
+                    case (#Int16(_)) { 2 };
+                    case (#Int32(_)) { 4 };
+                    case (#Int64(_)) { 8 };
+                    case (#Map(map)) {
+                        var size = 0;
+                        for ((k, v) in map.vals()) {
+                            size += k.size() + getSizeRecursive(v);
+                        };
+                        size;
+                    };
+                    case (#ValueMap(map)) {
+                        var size = 0;
+                        for ((k, v) in map.vals()) {
+                            size += getSizeRecursive(k) + getSizeRecursive(v);
+                        };
+                        size;
+                    };
+                    case (#Nat(_)) { 8 }; // Assuming 64-bit nat
+                    case (#Nat8(_)) { 1 };
+                    case (#Nat16(_)) { 2 };
+                    case (#Nat32(_)) { 4 };
+                    case (#Nat64(_)) { 8 };
+                    case (#Nats(nats)) { nats.size() * 8 };
+                    case (#Option(opt)) {
+                        switch (opt) {
+                            case (null) { 1 };
+                            case (?v) { 1 + getSizeRecursive(v) };
+                        };
+                    };
+                    case (#Principal(p)) { Principal.toText(p).size() };
+                    case (#Set(set)) {
+                        var size = 0;
+                        for (item in set.vals()) {
+                            size += getSizeRecursive(item);
+                        };
+                        size;
+                    };
+                    case (#Text(t)) { t.size() };
+                };
+            };
+
+            getSizeRecursive(data);
         };
+
         // ------ Responses ------
 
         public func getResponsedNamespace(id : T.PublicationID) : Text {

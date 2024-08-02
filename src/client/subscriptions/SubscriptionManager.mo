@@ -4,11 +4,15 @@ import Array "mo:base/Array";
 import Option "mo:base/Option";
 import Buffer "mo:base/Buffer";
 import Iter "mo:base/Iter";
+import Nat32 "mo:base/Nat32";
+import Time "mo:base/Time";
+import Debug "mo:base/Debug";
 import Types "../ICRC72Types";
 import Utils "../Utils";
+import SubscriptionStats "../stats/SubscriptionStats";
 
 module {
-    public class SubscriptionManager() = Self {
+    public class SubscriptionManager(subscriptionStats : SubscriptionStats.SubscriptionStats) = Self {
         /**
          * Maps a subscriber's Principal to their SubscriptionInfo.
          *
@@ -37,6 +41,8 @@ module {
             switch (subscriber_list) {
                 case (null) {
                     // if the subscriber is not found, add the subscription to the list
+                    subscriptionStats.recordSubscription(subscription.subscriber, Nat32.toNat(Nat32.fromIntWrap(Time.now())));
+                    Debug.print("icrc72_register_single_subscription: adding subscription to " # Principal.toText(subscription.subscriber));
                     subscriptions.put(subscription.subscriber, [subscription]);
                 };
                 case (?list) {
@@ -50,7 +56,10 @@ module {
                     switch (exists) {
                         case (null) {
                             // if the subscription is not found, add it to the list
+                            Debug.print("icrc72_register_single_subscription: adding subscription to " # Principal.toText(subscription.subscriber));
+
                             var l = Utils.pushIntoArray<Types.SubscriptionInfo>(subscription, list);
+                            subscriptionStats.recordSubscription(subscription.subscriber, Nat32.toNat(Nat32.fromIntWrap(Time.now())));
                             subscriptions.put(subscription.subscriber, l);
                         };
                         case (_) {
@@ -134,6 +143,7 @@ module {
                 },
             );
             if (filteredSubs.size() == 0) {
+                subscriptionStats.recordUnsubscription(subscriber);
                 ignore subscriptions.remove(subscriber);
             } else {
                 subscriptions.put(subscriber, filteredSubs);

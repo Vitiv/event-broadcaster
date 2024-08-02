@@ -9,11 +9,11 @@ import RejectedHandler "../stats/RejectedResponsesHandler";
 module {
     public class AppContext() {
         public let publicationStats = PublicationStats.PublicationStats();
+        public let subscriptionStats = SubStats.SubscriptionStats();
         public let balanceManager = BalanceManager.BalanceManager();
-        public let subscriptionManager = SubscriptionManager.SubscriptionManager();
+        public let subscriptionManager = SubscriptionManager.SubscriptionManager(subscriptionStats);
         public let allowListManager = AllowListManager.AllowListManager(subscriptionManager, balanceManager);
         public let publisherManager = PublisherManager.PublisherManager(allowListManager);
-        public let subscriptionStats = SubStats.SubscriptionStats();
         public let rejectHandler = RejectedHandler.RejectedResponsesHandler(publicationStats);
 
     };

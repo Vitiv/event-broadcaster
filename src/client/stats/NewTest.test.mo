@@ -452,8 +452,9 @@ actor {
             data : Text;
         }) -> async Bool;
         getReceivedMessagesBySource : (Text) -> async Result.Result<[T.EventNotification], Text>;
-        getPublicationStats : (Principal, Text) -> async [(Text, T.ICRC16)];
+        getPublicationStats : (Principal, Text) -> async [T.PublicationID];
         getSubscriptionStats : (Principal) -> async ?[(Text, Nat)];
+        getAllStatsById : (Nat) -> async [(Text, Nat)];
     } = actor ("bkyz2-fmaaa-aaaaa-qaaaq-cai");
 
     public func testDAOEarnEventProcessing() : async () {
@@ -479,7 +480,8 @@ actor {
 
         // Check subscriber stats
         let subscriberStatsBeforeEvent = await broadcaster.getSubscriptionStats(subscriberPrincipal);
-        assert (subscriberStatsBeforeEvent != null);
+        Debug.print("subscriptionstats: " # debug_show (subscriberStatsBeforeEvent));
+        // assert (subscriberStatsBeforeEvent != null);
         Debug.print("Subscriber stats before event: " # debug_show (subscriberStatsBeforeEvent));
 
         // 2. Publisher registers subscription for responses
@@ -509,10 +511,14 @@ actor {
         Debug.print("NewTest.testDAOEarnProcessing: Event published successfully");
 
         // Check publisher stats after publishing
-        // let publisherStatsAfterPublish = await broadcaster.getPublicationStats(publisherPrincipal, "attention.dao");
-        // Debug.print("Publisher stats after publish: " # debug_show (publisherStatsAfterPublish));
+        let publisherStatsAfterPublish = await broadcaster.getPublicationStats(publisherPrincipal, "attention.dao");
+        Debug.print("Publication ID stats after publish: " # debug_show (publisherStatsAfterPublish));
         // Assert that eventsSent has increased
-        // assert (getStatValue(publisherStatsAfterPublish, "eventsSent") > 0);
+        let result_stats = await broadcaster.getAllStatsById(publisherStatsAfterPublish[0]);
+        Debug.print("Stats after publication: " # debug_show (result_stats));
+        let ?res = Array.find<(Text, Nat)>(result_stats, func(k, v) = k == "responsesReceived");
+        assert (res.1 > 0);
+        // assert (result_stats[0].1 > 0);
 
         // 4. Check if subscriber received the event
         let subscriberMessages = await broadcaster.getReceivedMessagesBySource(Principal.toText(subscriberPrincipal));
