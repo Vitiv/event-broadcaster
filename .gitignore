@@ -26,3 +26,10 @@ dist/
 
 .mops
 
+test_dfx.json
+old_dfx.json
+
+
+**/DAO/
+**/frontend/
+

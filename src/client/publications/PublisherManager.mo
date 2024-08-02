@@ -22,7 +22,7 @@ module {
 
         public func init(deployer : Principal) : async () {
             _deployer := deployer;
-            await allowlist.initAllowlist(deployer);
+            // await allowlist.initAllowlist(deployer);
         };
 
         let default_publication_config = [("key", #Text("value"))];

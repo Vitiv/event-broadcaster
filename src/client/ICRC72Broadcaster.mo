@@ -13,6 +13,8 @@ import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
+import T "./EthTypes";
+import EthSender "./EventSender";
 
 import AppContext "./appcontext/AppContext";
 import Types "ICRC72Types";
@@ -63,13 +65,6 @@ actor class ICRC72Broadcaster() = Self {
         };
     };
 
-    // public shared (msg) func setBalanceLedgerCanisterId(ledgerCanisterId : Text) : async Bool {
-    //     if (Principal.isController(msg.caller)) {
-    //         return await balanceManager.setBalanceLedgerCanisterId(ledgerCanisterId);
-    //     };
-    //     false;
-    // };
-
     // Create event part
 
     public func createEvent({
@@ -79,6 +74,8 @@ actor class ICRC72Broadcaster() = Self {
         dataType : Text;
         data : Text;
     }) : async Bool {
+        // TODO authorization
+
         let data_type = switch (dataType) {
             case ("Text") { #Text(data) };
             // case ("Int") { #Int(Int.fromText(data)) };
@@ -166,6 +163,8 @@ actor class ICRC72Broadcaster() = Self {
         Ok : [Nat];
         Err : [Types.PublishError];
     }] {
+        // TODO authorization
+
         // TODO check balance
         // TODO check allowlist
         // TODO check if event is valid
@@ -495,18 +494,22 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     public func getPublications(publisher : Principal) : async [Types.PublicationInfo] {
+        // TODO authorization
         await pubManager.getPublications(publisher);
     };
 
     public func getPublishers() : async [Principal] {
+        // TODO authorization
         await pubManager.getPublishers();
     };
 
     public func unregisterPublisher(publisher : Principal) : async Bool {
+        // TODO authorization
         await pubManager.unregisterPublisher(publisher);
     };
 
     public func removePublication(publisher : Principal, namespace : Text) : async Bool {
+        // TODO authorization
         await pubManager.removePublication(publisher, namespace);
     };
 
@@ -748,87 +751,87 @@ actor class ICRC72Broadcaster() = Self {
     //     };
     // };
 
-    // public func requestCost(source : T.RpcService, jsonRequest : Text, maxResponseBytes : Nat) : async Nat {
-    //     await EthSender.requestCost(source, jsonRequest, Nat64.fromNat(maxResponseBytes));
-    // };
+    public func requestCost(source : T.RpcService, jsonRequest : Text, maxResponseBytes : Nat) : async Nat {
+        await EthSender.requestCost(source, jsonRequest, Nat64.fromNat(maxResponseBytes));
+    };
 
-    // public func getEthLogs(source_text : Text, provider : Text, config_text : Nat, addresses : [Text], blockTagFrom : Text, fromBlock : Nat, blockTagTo : Text, toBlock : Nat, topics : [Text], cycles : Nat) : async () {
-    //     let source = parseRpcSource(source_text, provider);
-    //     let config = parseRpcConfig(config_text);
-    //     let getLogArgs = parseGetLogsArgs(addresses, blockTagFrom, fromBlock, blockTagTo, toBlock, topics);
-    //     Debug.print("getEthLogs: source: " # source_text # " , provider: " # provider # " , config: " # Nat.toText(config_text) # " , addresses: " # addresses[0] # " , blockTag: " # blockTagFrom # " , fromBlock: " # Nat.toText(fromBlock) # " , toBlock: " # Nat.toText(toBlock) # " , topics: " # topics[0]);
-    //     // TODO result handling
-    //     let result = await EthSender.eth_getLogs(source, config, getLogArgs, cycles);
-    //     switch (result) {
-    //         case (#Consistent(_)) {
-    //             Debug.print("getEthLogs: Consistent");
-    //         };
-    //         case (_) {
-    //             Debug.print("getEthLogs: Inconsistent");
-    //         };
-    //     };
+    public func getEthLogs(source_text : Text, provider : Text, config_text : Nat, addresses : [Text], blockTagFrom : Text, fromBlock : Nat, blockTagTo : Text, toBlock : Nat, topics : [Text], cycles : Nat) : async () {
+        let source = parseRpcSource(source_text, provider);
+        let config = parseRpcConfig(config_text);
+        let getLogArgs = parseGetLogsArgs(addresses, blockTagFrom, fromBlock, blockTagTo, toBlock, topics);
+        Debug.print("getEthLogs: source: " # source_text # " , provider: " # provider # " , config: " # Nat.toText(config_text) # " , addresses: " # addresses[0] # " , blockTag: " # blockTagFrom # " , fromBlock: " # Nat.toText(fromBlock) # " , toBlock: " # Nat.toText(toBlock) # " , topics: " # topics[0]);
+        // TODO result handling
+        let result = await EthSender.eth_getLogs(source, config, getLogArgs, cycles);
+        switch (result) {
+            case (#Consistent(_)) {
+                Debug.print("getEthLogs: Consistent");
+            };
+            case (_) {
+                Debug.print("getEthLogs: Inconsistent");
+            };
+        };
 
-    //     return;
-    // };
+        return;
+    };
 
-    // func parseRpcSource(source_text : Text, provider : Text) : T.RpcSources {
-    //     if (source_text == "Sepolia") {
-    //         return #EthSepolia(?[parseEthSepoliaService(provider)]);
-    //     } else if (source_text == "Mainnet") {
-    //         return #EthMainnet(?[parseEthMainnetService(provider)]);
-    //     } else {
-    //         return #EthSepolia(?[#Alchemy]);
-    //     };
+    func parseRpcSource(source_text : Text, provider : Text) : T.RpcSources {
+        if (source_text == "Sepolia") {
+            return #EthSepolia(?[parseEthSepoliaService(provider)]);
+        } else if (source_text == "Mainnet") {
+            return #EthMainnet(?[parseEthMainnetService(provider)]);
+        } else {
+            return #EthSepolia(?[#Alchemy]);
+        };
 
-    // };
+    };
 
-    // func parseRpcConfig(config : Nat) : ?T.RpcConfig {
-    //     ?{ responseSizeEstimate = ?Nat64.fromNat(config) };
-    // };
+    func parseRpcConfig(config : Nat) : ?T.RpcConfig {
+        ?{ responseSizeEstimate = ?Nat64.fromNat(config) };
+    };
 
-    // func parseGetLogsArgs(addresses : [Text], blockTagFrom : Text, fromBlock : Nat, blockTagTo : Text, toBlock : Nat, topics : [Text]) : T.GetLogsArgs {
-    //     {
-    //         addresses = addresses;
-    //         fromBlock = parseBlockTag(blockTagFrom, fromBlock);
-    //         toBlock = parseBlockTag(blockTagTo, toBlock);
-    //         topics = ?[topics];
-    //     };
-    // };
+    func parseGetLogsArgs(addresses : [Text], blockTagFrom : Text, fromBlock : Nat, blockTagTo : Text, toBlock : Nat, topics : [Text]) : T.GetLogsArgs {
+        {
+            addresses = addresses;
+            fromBlock = parseBlockTag(blockTagFrom, fromBlock);
+            toBlock = parseBlockTag(blockTagTo, toBlock);
+            topics = ?[topics];
+        };
+    };
 
-    // func parseBlockTag(blockTag : Text, number : Nat) : ?T.BlockTag {
-    //     switch (blockTag) {
-    //         case ("Earliest") { return ? #Earliest };
-    //         case ("Safe") { return ? #Safe };
-    //         case ("Finalized") { return ? #Finalized };
-    //         case ("Latest") { return ? #Latest };
-    //         case ("Pending") { return ? #Pending };
-    //         case ("Number") {
-    //             return ? #Number(number);
-    //         };
-    //         case (_) { return null };
-    //     };
-    // };
+    func parseBlockTag(blockTag : Text, number : Nat) : ?T.BlockTag {
+        switch (blockTag) {
+            case ("Earliest") { return ? #Earliest };
+            case ("Safe") { return ? #Safe };
+            case ("Finalized") { return ? #Finalized };
+            case ("Latest") { return ? #Latest };
+            case ("Pending") { return ? #Pending };
+            case ("Number") {
+                return ? #Number(number);
+            };
+            case (_) { return null };
+        };
+    };
 
-    // func parseEthSepoliaService(service : Text) : T.EthSepoliaService {
-    //     switch (service) {
-    //         case ("Alchemy") { return #Alchemy };
-    //         case ("BlockPi") { return #BlockPi };
-    //         case ("PublicNode") { return #PublicNode };
-    //         case ("Ankr") { return #Ankr };
-    //         case (_) { return #Alchemy };
-    //     };
-    // };
+    func parseEthSepoliaService(service : Text) : T.EthSepoliaService {
+        switch (service) {
+            case ("Alchemy") { return #Alchemy };
+            case ("BlockPi") { return #BlockPi };
+            case ("PublicNode") { return #PublicNode };
+            case ("Ankr") { return #Ankr };
+            case (_) { return #Alchemy };
+        };
+    };
 
-    // func parseEthMainnetService(service : Text) : T.EthMainnetService {
-    //     switch (service) {
-    //         case ("Alchemy") { return #Alchemy };
-    //         case ("BlockPi") { return #BlockPi };
-    //         case ("Cloudflare") { return #Cloudflare };
-    //         case ("PublicNode") { return #PublicNode };
-    //         case ("Ankr") { return #Ankr };
-    //         case (_) { return #Alchemy };
-    //     };
-    // };
+    func parseEthMainnetService(service : Text) : T.EthMainnetService {
+        switch (service) {
+            case ("Alchemy") { return #Alchemy };
+            case ("BlockPi") { return #BlockPi };
+            case ("Cloudflare") { return #Cloudflare };
+            case ("PublicNode") { return #PublicNode };
+            case ("Ankr") { return #Ankr };
+            case (_) { return #Alchemy };
+        };
+    };
 
     // ------ Rejected Responses ------
     public shared (msg) func rejectedResponses(publicationId : Nat, rejectedResponses : [(Principal, Nat, Types.Reason)]) : async [(Principal, Nat, Bool)] {

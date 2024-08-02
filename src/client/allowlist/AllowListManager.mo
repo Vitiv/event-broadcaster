@@ -15,7 +15,7 @@ module {
 
         type UserPermission = (Principal, T.Permission);
 
-        var _deployer = Principal.fromText("bs3e6-4i343-voosn-wogd7-6kbdg-mctak-hn3ws-k7q7f-fye2e-uqeyh-yae");
+        public var _deployer = Principal.fromText("bs3e6-4i343-voosn-wogd7-6kbdg-mctak-hn3ws-k7q7f-fye2e-uqeyh-yae");
         var _initialized = false;
 
         public func initAllowlist(deployer : Principal) : async () {
