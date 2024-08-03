@@ -24,8 +24,10 @@ actor class ICRC72Broadcaster() = Self {
     let context = AppContext.AppContext();
     // recieved messages by source
     type Source = Principal;
+    type Namespace = Text;
+    type NamespaceOwner = Text;
     private var messagesMap = HashMap.HashMap<Source, [Types.EventNotification]>(10, Principal.equal, Principal.hash);
-
+    private var registredNamespace = HashMap.HashMap<Namespace, NamespaceOwner>(10, Text.equal, Text.hash);
     type SubscriberActor = actor {
         icrc72_handle_notification([Types.EventNotification]) : async ();
         icrc72_handle_notification_trusted([Types.EventNotification]) : async [{
@@ -60,6 +62,11 @@ actor class ICRC72Broadcaster() = Self {
 
             await allowlist.initAllowlist(deployer);
             await pubManager.init(deployer);
+            registredNamespace.put(dao_canister, "attention.dao");
+            registredNamespace.put(dao_canister, "attention.dao.balance");
+            registredNamespace.put(dao_canister, "*.attention.dao");
+            registredNamespace.put(dao_canister, "attention.dao.*");
+            registredNamespace.put(dao_canister, "*.attention.dao.*");
 
             initialized := true;
         };
@@ -101,8 +108,9 @@ actor class ICRC72Broadcaster() = Self {
         result[0].1;
     };
 
-    public shared func handleNewEvent(event : Types.Event) : async [(Nat, Bool)] {
+    public shared ({ caller }) func handleNewEvent(event : Types.Event) : async [(Nat, Bool)] {
         // TODO check authorized
+        if (not validate(event, Principal.toText(caller)).0) return [(event.id, false)];
 
         let result_buffer = Buffer.Buffer<(Nat, Bool)>(0);
 
@@ -285,6 +293,7 @@ actor class ICRC72Broadcaster() = Self {
     // // Subscription handling
 
     public func icrc72_handle_notification(messages : [Types.EventNotification]) : async () {
+        // TODO validate publisher and namespace
         for (message in messages.vals()) {
             subscriptionStats.recordMessageReceived(Principal.fromActor(Self), publicationStats.getDataSize(message.data));
 
@@ -859,5 +868,80 @@ actor class ICRC72Broadcaster() = Self {
 
     public func getAllStatsById(id : Types.PublicationID) : async [(Text, Nat)] {
         publicationStats.getAll(id);
+    };
+
+    // ----------Validation----------
+
+    func validate(event : Types.Event, caller : Text) : (Bool, Text) {
+        if (not (caller == Principal.toText(event.source))) {
+            return (false, "Caller not a publisher");
+        };
+        switch (registredNamespace.get(event.namespace)) {
+            case null {
+                return (false, "Namespace is not registered");
+            };
+            case (?existOwner) {
+                if (not (caller == existOwner)) return (false, "Namespace is registered by another publisher");
+            };
+        };
+        (true, "Caller and Namespace are valid");
+    };
+
+    public shared ({ caller }) func addRegisteredNamespace(namespace : Text, owner : Text) : async Bool {
+        if (await allowlist.isUserInAllowList(caller, #Admin)) {
+            switch (registredNamespace.get(namespace)) {
+                case null {
+                    registredNamespace.put(namespace, owner);
+                    return true;
+                };
+                case (?_) {};
+            };
+        };
+        false;
+    };
+
+    public shared ({ caller }) func removeRegisteredNamespace(namespace : Text) : async Bool {
+        if (await allowlist.isUserInAllowList(caller, #Admin)) {
+            switch (registredNamespace.get(namespace)) {
+                case null {};
+                case (?_) {
+                    registredNamespace.delete(namespace);
+                    return true;
+                };
+            };
+        };
+        false;
+    };
+
+    public shared ({ caller }) func getRegisteredNamespaces() : async [(Text, Text)] {
+        if (await allowlist.isUserInAllowList(caller, #Admin)) {
+            return Iter.toArray(registredNamespace.entries());
+        };
+        [];
+    };
+
+    public shared ({ caller }) func getRegisteredNamespacesByOwner(owner : Text) : async [(Text, Text)] {
+        if (await allowlist.isUserInAllowList(caller, #Admin)) {
+            let result = Buffer.Buffer<(Text, Text)>(0);
+
+            for ((namespace, namespaceOwner) in registredNamespace.entries()) {
+                if (namespaceOwner == owner) {
+                    result.add(namespace, namespaceOwner);
+                };
+            };
+
+            return Buffer.toArray(result);
+        };
+        [];
+    };
+
+    public shared ({ caller }) func getRegisteredOwnerOfNamespace(namespace : Text) : async ?Text {
+        if (await allowlist.isUserInAllowList(caller, #Admin)) {
+            switch (registredNamespace.get(namespace)) {
+                case (?owner) { return ?owner };
+                case null {};
+            };
+        };
+        null;
     };
 };
