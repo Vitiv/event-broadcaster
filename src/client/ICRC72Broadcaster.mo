@@ -168,8 +168,8 @@ actor class ICRC72Broadcaster() = Self {
     };
 
     public func icrc72_publish(events : [Types.Event]) : async [{
-        Ok : [Nat];
-        Err : [Types.PublishError];
+        #Ok : [Nat];
+        #Err : [Types.PublishError];
     }] {
         // TODO authorization
 
