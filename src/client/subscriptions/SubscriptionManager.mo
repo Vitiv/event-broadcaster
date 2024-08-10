@@ -42,7 +42,7 @@ module {
                 case (null) {
                     // if the subscriber is not found, add the subscription to the list
                     subscriptionStats.recordSubscription(subscription.subscriber, Nat32.toNat(Nat32.fromIntWrap(Time.now())));
-                    Debug.print("icrc72_register_single_subscription: adding subscription to " # Principal.toText(subscription.subscriber));
+                    // Debug.print("icrc72_register_single_subscription: adding subscription to " # Principal.toText(subscription.subscriber));
                     subscriptions.put(subscription.subscriber, [subscription]);
                 };
                 case (?list) {
@@ -56,14 +56,15 @@ module {
                     switch (exists) {
                         case (null) {
                             // if the subscription is not found, add it to the list
-                            Debug.print("icrc72_register_single_subscription: adding subscription to " # Principal.toText(subscription.subscriber));
+                            // Debug.print("icrc72_register_single_subscription: adding subscription to " # Principal.toText(subscription.subscriber));
 
                             var l = Utils.pushIntoArray<Types.SubscriptionInfo>(subscription, list);
                             subscriptionStats.recordSubscription(subscription.subscriber, Nat32.toNat(Nat32.fromIntWrap(Time.now())));
                             subscriptions.put(subscription.subscriber, l);
                         };
                         case (_) {
-                            // else, return false
+                            // else,
+                            return false;
                         };
                     };
                 };
@@ -74,8 +75,9 @@ module {
         public func icrc72_register_subscription(subscriptionInfos : [Types.SubscriptionInfo]) : async [(Types.SubscriptionInfo, Bool)] {
             var results = Buffer.Buffer<(Types.SubscriptionInfo, Bool)>(subscriptions.size());
             for (subscription in subscriptionInfos.vals()) {
-                subscriptions.put(subscription.subscriber, [subscription]);
-                results.add((subscription, true));
+                let result = await icrc72_register_single_subscription(subscription);
+                // subscriptions.put(subscription.subscriber, [subscription]);
+                results.add(subscription, result);
             };
             return Buffer.toArray(results);
         };

@@ -110,7 +110,7 @@ actor class ICRC72Broadcaster() = Self {
 
     public shared ({ caller }) func handleNewEvent(event : Types.Event) : async [(Nat, Bool)] {
         // TODO check authorized
-        if (not validate(event, Principal.toText(caller)).0) return [(event.id, false)];
+        // if (not validate(event, Principal.toText(caller)).0) return [(event.id, false)];
 
         let result_buffer = Buffer.Buffer<(Nat, Bool)>(0);
 
@@ -184,12 +184,14 @@ actor class ICRC72Broadcaster() = Self {
         let error_buffer = Buffer.Buffer<Types.PublishError>(0);
         for (event in events.vals()) {
             let result = await handleNewEvent(event);
-            switch (result[0].1) {
+            if (result[0].0 == 0) {
+                error_buffer.add(#GenericError({ error_code = 500; message = "No Subscription found with this namespace: " # event.namespace }));
+            } else switch (result[0].1) {
                 case (true) {
                     success_buffer.add(result[0].0);
                 };
                 case (false) {
-                    error_buffer.add(#Unauthorized);
+                    error_buffer.add(#GenericError({ error_code = 500; message = "Cannot publish event # " # Nat.toText(result[0].0) }));
                 };
             };
         };
